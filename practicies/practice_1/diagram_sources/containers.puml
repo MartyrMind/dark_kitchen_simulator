@@ -1,0 +1,46 @@
+@startuml DarkKitchen_C2_Containers
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+title C2 Containers — Система управления выполнением заказов для dark kitchen
+
+Person(operator, "Оператор dark kitchen", "Создает и контролирует заказы")
+Person(apiClient, "Внешний API-клиент", "Создает заказы через API")
+Person(stationWorker, "Работник станции", "Работает с задачами на KDS")
+
+System_Boundary(system, "Dark Kitchen Order Fulfillment System") {
+    Container(fulfillment, "Fulfillment Service", "Python / FastAPI", "Принимает заказы, создает kitchen tasks, владеет глобальными статусами заказов и задач")
+    Container(kitchen, "Kitchen Service / KDS", "Python / FastAPI", "Управляет кухнями, станциями, capacity, KDS API, claim и complete")
+    Container(menu, "Menu Service", "Python / FastAPI", "Управляет меню, блюдами, рецептами и доступностью блюд по кухням")
+    Container(worker, "Kitchen Scheduler Worker", "Go", "Читает Redis Streams, выбирает station_id, доставляет задачи в KDS, выполняет retry/backoff/DLQ")
+    Container(simulator, "Station Simulator Service", "Python или Go", "Имитирует работников станции: читает KDS, claim-ит и complete-ит задачи")
+
+    ContainerQueue(redis, "Redis Streams", "Redis", "Очереди kitchen tasks: stream:kitchen:{kitchen_id}:station:{station_type}")
+    ContainerDb(postgres, "PostgreSQL", "PostgreSQL", "Текущее состояние сервисов: orders, kitchen_tasks, kitchens, stations, menu_items, recipe_steps")
+    ContainerDb(mongo, "MongoDB Event Log", "MongoDB", "Доменные и audit-события: order_events, task_events, kds_events, station_events")
+}
+
+Rel(operator, fulfillment, "Создает и отслеживает заказы", "HTTP/REST")
+Rel(apiClient, fulfillment, "Создает заказы", "HTTP/REST")
+Rel(stationWorker, kitchen, "Смотрит задачи, claim, complete", "HTTP/REST KDS API")
+
+Rel(fulfillment, menu, "Проверяет блюда, доступность и recipe steps", "HTTP/REST")
+Rel(fulfillment, kitchen, "Проверяет кухню и станции", "HTTP/REST")
+Rel(fulfillment, redis, "Публикует kitchen tasks", "XADD")
+Rel(worker, redis, "Читает и подтверждает задачи", "XREADGROUP / XACK")
+
+Rel(worker, fulfillment, "Получает task snapshot, dispatch-readiness, mark-displayed", "HTTP/REST")
+Rel(worker, kitchen, "Получает dispatch candidates и доставляет задачу в KDS", "HTTP/REST")
+Rel(kitchen, fulfillment, "Сообщает о start и complete задач", "HTTP/REST")
+Rel(simulator, kitchen, "Имитирует работников: GET tasks, claim, complete", "HTTP/REST")
+
+Rel(fulfillment, postgres, "Читает и пишет orders, order_items, kitchen_tasks", "SQL")
+Rel(kitchen, postgres, "Читает и пишет kitchens, stations, kds_station_tasks", "SQL")
+Rel(menu, postgres, "Читает и пишет menu_items, availability, recipe_steps", "SQL")
+
+Rel(fulfillment, mongo, "Пишет order/task events", "MongoDB")
+Rel(kitchen, mongo, "Пишет kds/station events", "MongoDB")
+Rel(worker, mongo, "Пишет dispatch audit/error events", "MongoDB")
+
+@enduml

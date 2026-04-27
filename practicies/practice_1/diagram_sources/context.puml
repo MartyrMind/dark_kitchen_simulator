@@ -1,0 +1,30 @@
+@startuml DarkKitchen_C1_Context
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+
+title C1 Context — Система управления выполнением заказов для dark kitchen
+
+Person(operator, "Оператор dark kitchen", "Создает кухни, станции, меню и заказы; контролирует выполнение заказов")
+Person(apiClient, "Внешний API-клиент", "Создает заказы через HTTP API")
+Person(stationWorker, "Работник станции", "Видит задачи на KDS, берет их в работу и завершает")
+Person(devops, "DevOps / разработчик", "Наблюдает за метриками, логами и состоянием системы")
+
+System(darkKitchenSystem, "Dark Kitchen Order Fulfillment System", "Микросервисная система управления выполнением заказов: order → tasks → Redis → scheduler → KDS → ready_for_pickup")
+
+System_Ext(postgres, "PostgreSQL", "Хранение транзакционного состояния сервисов")
+System_Ext(redis, "Redis Streams", "Очереди kitchen tasks по kitchen_id и station_type")
+System_Ext(mongo, "MongoDB", "Event log: order_events, task_events, kds_events, station_events")
+System_Ext(promGrafana, "Prometheus + Grafana", "Сбор метрик и визуализация состояния системы")
+
+Rel(operator, darkKitchenSystem, "Управляет кухнями, станциями, меню и заказами", "HTTP/REST")
+Rel(apiClient, darkKitchenSystem, "Создает и отслеживает заказы", "HTTP/REST")
+Rel(stationWorker, darkKitchenSystem, "Получает KDS-задачи, claim, complete", "HTTP/REST")
+Rel(devops, promGrafana, "Смотрит dashboards и метрики", "Web UI")
+
+Rel(darkKitchenSystem, postgres, "Хранит текущее состояние заказов, задач, кухонь, станций, меню", "SQL")
+Rel(darkKitchenSystem, redis, "Публикует и читает kitchen tasks", "Redis Streams")
+Rel(darkKitchenSystem, mongo, "Записывает доменные и audit-события", "MongoDB")
+Rel(promGrafana, darkKitchenSystem, "Собирает метрики с /metrics", "HTTP")
+
+@enduml

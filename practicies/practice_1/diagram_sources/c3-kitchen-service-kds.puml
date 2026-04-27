@@ -1,0 +1,74 @@
+@startuml DarkKitchen_C3_KitchenService_KDS
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title C3 Components — Kitchen Service / KDS
+
+Person(stationWorker, "Работник станции", "Видит задачи на KDS, выполняет claim и complete")
+System_Ext(schedulerWorker, "Kitchen Scheduler Worker", "Go-сервис, который выбирает station_id и доставляет задачи в KDS")
+System_Ext(fulfillment, "Fulfillment Service", "Владелец глобальных бизнес-статусов orders и kitchen_tasks")
+System_Ext(prometheus, "Prometheus", "Собирает метрики с /metrics")
+
+ContainerDb(postgres, "PostgreSQL Kitchen schema", "PostgreSQL", "kitchens, stations, kds_station_tasks")
+ContainerDb(mongo, "MongoDB Event Log", "MongoDB", "kds_events, station_events, app_audit_events")
+
+Container_Boundary(kitchenService, "Kitchen Service / KDS") {
+    Component(kitchenApi, "Kitchen Management API", "FastAPI Router", "Public API для создания и получения кухонь")
+    Component(stationApi, "Station Management API", "FastAPI Router", "Public API для создания станций, изменения capacity и status")
+    Component(kdsPublicApi, "KDS Public API", "FastAPI Router", "API для работников станции: GET tasks, claim, complete, fail")
+    Component(kdsInternalApi, "Internal KDS Dispatch API", "FastAPI Router", "API для Go worker-а: dispatch-candidates и доставка задач в KDS")
+
+    Component(kitchenUseCases, "Kitchen Use Cases", "Application Service", "Бизнес-операции по кухням")
+    Component(stationUseCases, "Station Use Cases", "Application Service", "Бизнес-операции по станциям, capacity и status")
+    Component(kdsUseCases, "KDS Use Cases", "Application Service", "Доставка KDS-задач, claim, complete, fail")
+    Component(capacityGuard, "Capacity Guard", "Domain Component", "Атомарно проверяет busy_slots < capacity и защищает от превышения capacity")
+    Component(dispatchCandidates, "Dispatch Candidates Query", "Query Service", "Возвращает станции-кандидаты с visible_backlog_size, capacity, busy_slots и health")
+
+    Component(kitchenRepo, "Kitchen Repository", "SQLAlchemy", "Доступ к таблице kitchens")
+    Component(stationRepo, "Station Repository", "SQLAlchemy", "Доступ к таблице stations и busy_slots")
+    Component(kdsTaskRepo, "KDS Station Task Repository", "SQLAlchemy", "Доступ к kds_station_tasks, UNIQUE(task_id), UNIQUE(idempotency_key)")
+
+    Component(fulfillmentClient, "Fulfillment Client", "HTTP / httpx", "Вызывает /internal/tasks/{task_id}/start и /complete")
+    Component(eventWriter, "Event Writer", "dk-common / motor", "Пишет KdsTaskDisplayed, KdsTaskClaimed, KdsTaskCompleted, Station events")
+    Component(metricsExporter, "Metrics Exporter", "prometheus-client", "Экспортирует kds_visible_backlog_size, claim metrics, station utilization")
+}
+
+Rel(stationWorker, kdsPublicApi, "Получает задачи, claim-ит и завершает задачи", "HTTP/REST")
+Rel(schedulerWorker, kdsInternalApi, "Получает dispatch candidates и доставляет задачу в KDS", "HTTP/REST")
+
+Rel(kitchenApi, kitchenUseCases, "Вызывает use cases")
+Rel(stationApi, stationUseCases, "Вызывает use cases")
+Rel(kdsPublicApi, kdsUseCases, "Claim / complete / fail")
+Rel(kdsInternalApi, kdsUseCases, "Создает displayed KDS-задачу")
+Rel(kdsInternalApi, dispatchCandidates, "Запрашивает станции-кандидаты")
+
+Rel(kitchenUseCases, kitchenRepo, "Читает и пишет кухни")
+Rel(stationUseCases, stationRepo, "Читает и пишет станции")
+Rel(dispatchCandidates, stationRepo, "Читает станции, capacity, busy_slots")
+Rel(dispatchCandidates, kdsTaskRepo, "Считает visible backlog")
+
+Rel(kdsUseCases, capacityGuard, "Проверяет claim и capacity")
+Rel(capacityGuard, stationRepo, "Блокирует station row и обновляет busy_slots")
+Rel(kdsUseCases, kdsTaskRepo, "Создает и обновляет station tasks")
+Rel(kdsUseCases, fulfillmentClient, "Сообщает start / complete глобальной задачи")
+Rel(kdsUseCases, eventWriter, "Пишет KDS и station events")
+Rel(kdsUseCases, metricsExporter, "Обновляет KDS и station метрики")
+
+Rel(kitchenRepo, postgres, "SQL")
+Rel(stationRepo, postgres, "SQL")
+Rel(kdsTaskRepo, postgres, "SQL")
+Rel(fulfillmentClient, fulfillment, "POST /internal/tasks/{task_id}/start, /complete", "HTTP/REST")
+Rel(eventWriter, mongo, "Insert events", "MongoDB")
+Rel(prometheus, metricsExporter, "Scrape /metrics", "HTTP")
+
+legend right
+|= Элемент |= Значение |
+| Person | Пользователь или внешний участник |
+| System_Ext | Внешний сервис по отношению к Kitchen Service |
+| ContainerDb | Хранилище данных |
+| Component | Внутренний компонент Kitchen Service / KDS |
+| Rel | Направление взаимодействия |
+endlegend
+
+@enduml

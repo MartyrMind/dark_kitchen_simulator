@@ -1,0 +1,33 @@
+{
+  "folders": [
+    {
+      "name": "repo",
+      "path": "."
+    },
+    {
+      "name": "kitchen-service",
+      "path": "services/kitchen-service"
+    },
+    {
+      "name": "menu-service",
+      "path": "services/menu-service"
+    },
+    {
+      "name": "fulfillment-service",
+      "path": "services/fulfillment-service"
+    },
+    {
+      "name": "station-simulator-service",
+      "path": "services/station-simulator-service"
+    },
+    {
+      "name": "dk-common",
+      "path": "libs/python/dk-common"
+    }
+  ],
+  "settings": {
+    "python.terminal.activateEnvironment": true,
+    "python.useEnvironmentsExtension": true,
+    "python.analysis.typeCheckingMode": "standard"
+  }
+}
