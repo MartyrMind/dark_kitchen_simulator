@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-service-mesh
+  labels:
+    grafana_dashboard: "1"
+data:
+  service-mesh.json: |
+    {
+      "title": "Dark Kitchen Service Mesh",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "panels": [
+        {"type":"timeseries","title":"Linkerd request rate","gridPos":{"x":0,"y":0,"w":12,"h":8},"targets":[{"expr":"sum by (dst_deployment) (rate(response_total{dst_namespace=\"dark-kitchen\"}[1m]))"}]},
+        {"type":"timeseries","title":"Linkerd success rate","gridPos":{"x":12,"y":0,"w":12,"h":8},"targets":[{"expr":"sum by (dst_deployment) (rate(response_total{dst_namespace=\"dark-kitchen\", classification=\"success\"}[1m])) / sum by (dst_deployment) (rate(response_total{dst_namespace=\"dark-kitchen\"}[1m]))"}]},
+        {"type":"timeseries","title":"Linkerd p95 latency","gridPos":{"x":0,"y":8,"w":12,"h":8},"targets":[{"expr":"histogram_quantile(0.95, sum by (dst_deployment, le) (rate(response_latency_ms_bucket{dst_namespace=\"dark-kitchen\"}[5m])))"}]},
+        {"type":"timeseries","title":"Meshed deployments available","gridPos":{"x":12,"y":8,"w":12,"h":8},"targets":[{"expr":"kube_deployment_status_replicas_available{namespace=\"dark-kitchen\"}"}]}
+      ]
+    }

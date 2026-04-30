@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Reusable patch lives here. Apply it through an overlay, for example:
+#   kubectl apply -k deploy/k8s/overlays/minikube-linkerd
+
+configMapGenerator:
+  - name: linkerd-injection-patch-note
+    files:
+      - linkerd-injection-patch.yaml

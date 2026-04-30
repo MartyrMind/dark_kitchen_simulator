@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-hpa
+  labels:
+    grafana_dashboard: "1"
+data:
+  hpa.json: |
+    {
+      "title": "Dark Kitchen HPA",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "panels": [
+        {"type":"timeseries","title":"HPA current replicas","gridPos":{"x":0,"y":0,"w":8,"h":8},"targets":[{"expr":"kube_horizontalpodautoscaler_status_current_replicas{namespace=\"dark-kitchen\"}"}]},
+        {"type":"timeseries","title":"HPA desired replicas","gridPos":{"x":8,"y":0,"w":8,"h":8},"targets":[{"expr":"kube_horizontalpodautoscaler_status_desired_replicas{namespace=\"dark-kitchen\"}"}]},
+        {"type":"timeseries","title":"HPA max replicas","gridPos":{"x":16,"y":0,"w":8,"h":8},"targets":[{"expr":"kube_horizontalpodautoscaler_spec_max_replicas{namespace=\"dark-kitchen\"}"}]},
+        {"type":"timeseries","title":"Autoscaled pod CPU usage","gridPos":{"x":0,"y":8,"w":12,"h":8},"targets":[{"expr":"sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"dark-kitchen\", pod=~\"(kitchen-service|menu-service|fulfillment-service|kitchen-scheduler-worker)-.*\", container!=\"\", image!=\"\"}[5m]))"}]},
+        {"type":"timeseries","title":"CPU requests","gridPos":{"x":12,"y":8,"w":12,"h":8},"targets":[{"expr":"sum by (pod) (kube_pod_container_resource_requests{namespace=\"dark-kitchen\", resource=\"cpu\", pod=~\"(kitchen-service|menu-service|fulfillment-service|kitchen-scheduler-worker)-.*\"})"}]}
+      ]
+    }

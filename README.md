@@ -96,3 +96,21 @@ python scripts/demo/seed_demo_data.py \
 ```
 
 If ports are already in use, either stop the local process using the port or override the host port variables from `.env.example`. For a fully fresh state, use `./scripts/demo/run-demo.sh --clean` or `docker compose -f deploy/compose/docker-compose.yml --profile demo down -v`.
+
+## Kubernetes / Minikube
+
+Local Kubernetes manifests live in `deploy/k8s`. See [docs/k8s/minikube.md](docs/k8s/minikube.md) for the Minikube deployment flow, migrations, demo seed, ingress, Prometheus, Grafana, troubleshooting, and cleanup.
+
+## Advanced Kubernetes Observability and Autoscaling
+
+The project includes an extended Minikube setup for the final practical assignment:
+
+- PostgreSQL runs as StatefulSet with PVC.
+- Redis and MongoDB run as StatefulSet persistent workloads.
+- Application services expose Prometheus metrics through `/metrics`.
+- kube-prometheus-stack collects application and Kubernetes metrics.
+- Grafana dashboards show HTTP metrics, business KPIs, Kubernetes workloads, HPA behavior, and Service Mesh signals.
+- HorizontalPodAutoscaler is configured for stateless services.
+- Linkerd Service Mesh provides mTLS and service-to-service traffic visibility.
+
+See [docs/k8s/bonus-observability-hpa-service-mesh.md](docs/k8s/bonus-observability-hpa-service-mesh.md) for commands.

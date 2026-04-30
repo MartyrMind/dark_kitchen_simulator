@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: monitoring
+
+resources:
+  - servicemonitor-kitchen-service.yaml
+  - servicemonitor-menu-service.yaml
+  - servicemonitor-fulfillment-service.yaml
+  - servicemonitor-station-simulator-service.yaml
+  - servicemonitor-kitchen-scheduler-worker.yaml
+  - grafana-dashboard-application-overview.yaml
+  - grafana-dashboard-business-flow.yaml
+  - grafana-dashboard-scheduler-worker.yaml
+  - grafana-dashboard-kds-kitchen.yaml
+  - grafana-dashboard-simulator.yaml
+  - grafana-dashboard-kubernetes-workloads.yaml
+  - grafana-dashboard-hpa.yaml
+  - grafana-dashboard-service-mesh.yaml

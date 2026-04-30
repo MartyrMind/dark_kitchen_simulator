@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-simulator
+  labels:
+    grafana_dashboard: "1"
+data:
+  simulator.json: |
+    {
+      "title": "Dark Kitchen Station Simulator",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "panels": [
+        {"type":"timeseries","title":"Simulator claims","gridPos":{"x":0,"y":0,"w":12,"h":8},"targets":[{"expr":"sum(rate(simulator_task_claims_total[5m]))"}]},
+        {"type":"timeseries","title":"Simulator completions","gridPos":{"x":12,"y":0,"w":12,"h":8},"targets":[{"expr":"sum(rate(simulator_task_completions_total[5m]))"}]},
+        {"type":"timeseries","title":"Simulator errors","gridPos":{"x":0,"y":8,"w":12,"h":8},"targets":[{"expr":"sum(rate(simulator_errors_total[5m]))"}]},
+        {"type":"timeseries","title":"Simulator pod CPU","gridPos":{"x":12,"y":8,"w":12,"h":8},"targets":[{"expr":"sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"dark-kitchen\", pod=~\"station-simulator-service-.*\", container!=\"\", image!=\"\"}[5m]))"}]}
+      ]
+    }

@@ -1,0 +1,52 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dark-kitchen-ingress
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: dark-kitchen.local
+      http:
+        paths:
+          - path: /orders
+            pathType: Prefix
+            backend:
+              service:
+                name: fulfillment-service
+                port:
+                  number: 8000
+          - path: /kds
+            pathType: Prefix
+            backend:
+              service:
+                name: kitchen-service
+                port:
+                  number: 8000
+          - path: /kitchens
+            pathType: Prefix
+            backend:
+              service:
+                name: kitchen-service
+                port:
+                  number: 8000
+          - path: /stations
+            pathType: Prefix
+            backend:
+              service:
+                name: kitchen-service
+                port:
+                  number: 8000
+          - path: /menu-items
+            pathType: Prefix
+            backend:
+              service:
+                name: menu-service
+                port:
+                  number: 8000
+          - path: /recipes
+            pathType: Prefix
+            backend:
+              service:
+                name: menu-service
+                port:
+                  number: 8000

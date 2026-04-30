@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-scheduler-worker
+  labels:
+    grafana_dashboard: "1"
+data:
+  scheduler-worker.json: |
+    {
+      "title": "Dark Kitchen Scheduler Worker",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "panels": [
+        {"type":"timeseries","title":"Dispatch attempts","gridPos":{"x":0,"y":0,"w":12,"h":8},"targets":[{"expr":"sum by (result) (rate(dispatch_attempts_total[5m]))"}]},
+        {"type":"timeseries","title":"Redis messages read","gridPos":{"x":12,"y":0,"w":12,"h":8},"targets":[{"expr":"sum(rate(redis_stream_messages_read_total[5m]))"}]},
+        {"type":"timeseries","title":"Worker pod CPU","gridPos":{"x":0,"y":8,"w":12,"h":8},"targets":[{"expr":"sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"dark-kitchen\", pod=~\"kitchen-scheduler-worker-.*\", container!=\"\", image!=\"\"}[5m]))"}]},
+        {"type":"timeseries","title":"Worker pod memory","gridPos":{"x":12,"y":8,"w":12,"h":8},"targets":[{"expr":"sum by (pod) (container_memory_working_set_bytes{namespace=\"dark-kitchen\", pod=~\"kitchen-scheduler-worker-.*\", container!=\"\", image!=\"\"})"}]}
+      ]
+    }

@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-business-flow
+  labels:
+    grafana_dashboard: "1"
+data:
+  business-flow.json: |
+    {
+      "title": "Dark Kitchen Business Flow",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "10s",
+      "panels": [
+        {"type":"timeseries","title":"Orders created rate","gridPos":{"x":0,"y":0,"w":8,"h":7},"targets":[{"expr":"sum(rate(orders_created_total[5m]))"}]},
+        {"type":"timeseries","title":"Orders ready rate","gridPos":{"x":8,"y":0,"w":8,"h":7},"targets":[{"expr":"sum(rate(orders_ready_total[5m]))"}]},
+        {"type":"timeseries","title":"Tasks completed by station type","gridPos":{"x":16,"y":0,"w":8,"h":7},"targets":[{"expr":"sum by (station_type) (rate(tasks_completed_total[5m]))"}]},
+        {"type":"timeseries","title":"Task completion p95","gridPos":{"x":0,"y":7,"w":8,"h":7},"targets":[{"expr":"histogram_quantile(0.95, sum by (station_type, le) (rate(task_actual_duration_seconds_bucket[5m])))"}]},
+        {"type":"timeseries","title":"Task delay p95","gridPos":{"x":8,"y":7,"w":8,"h":7},"targets":[{"expr":"histogram_quantile(0.95, sum by (station_type, le) (rate(task_delay_seconds_bucket[5m])))"}]},
+        {"type":"timeseries","title":"Station utilization","gridPos":{"x":16,"y":7,"w":8,"h":7},"targets":[{"expr":"station_utilization_ratio"}]},
+        {"type":"timeseries","title":"KDS visible backlog","gridPos":{"x":0,"y":14,"w":8,"h":7},"targets":[{"expr":"kds_visible_backlog_size"}]},
+        {"type":"timeseries","title":"DLQ messages","gridPos":{"x":8,"y":14,"w":8,"h":7},"targets":[{"expr":"sum by (station_type) (rate(redis_dlq_messages_total[5m]))"}]},
+        {"type":"timeseries","title":"Dispatch failures","gridPos":{"x":16,"y":14,"w":8,"h":7},"targets":[{"expr":"sum by (reason) (rate(dispatch_failures_total[5m]))"}]}
+      ]
+    }

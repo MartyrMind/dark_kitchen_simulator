@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: station-simulator-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: station-simulator-service
+  template:
+    metadata:
+      labels:
+        app: station-simulator-service
+    spec:
+      containers:
+        - name: station-simulator-service
+          image: dark-kitchen/station-simulator-service:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: dark-kitchen-config
+          env:
+            - name: SERVICE_NAME
+              value: station-simulator-service
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "300m"
+              memory: "256Mi"

@@ -1,17 +1,11 @@
 # Practice 4 Screenshots
 
-Place report screenshots in this directory.
+Store final report screenshots here manually. Suggested captures are listed in `docs/practice4/report-evidence-checklist.md`.
 
-Checklist:
+Minimum captures:
 
-1. Prometheus targets page with all services UP.
-2. Grafana System overview dashboard.
-3. Grafana Fulfillment dashboard.
-4. Grafana Scheduler worker dashboard.
-5. Grafana KDS / Kitchen dashboard.
-6. Grafana Simulator dashboard.
-7. MongoDB `order_events` query result.
-8. MongoDB `task_events` query result.
-9. MongoDB `kds_events` query result.
-10. MongoDB `station_events` query result.
-11. MongoDB `app_audit_events` example if available.
+1. Prometheus targets page with all application and Kubernetes targets UP.
+2. Grafana application, business, Kubernetes workloads, and HPA dashboards.
+3. `kubectl get hpa -n dark-kitchen` during load.
+4. Linkerd dashboard or `linkerd stat deploy -n dark-kitchen`.
+5. MongoDB event query results for order, task, KDS, and station events.

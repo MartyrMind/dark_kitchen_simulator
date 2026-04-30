@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-initdb
+data:
+  01-create-databases.sql: |
+    CREATE DATABASE kitchen_service;
+    CREATE DATABASE menu_service;
+    CREATE DATABASE fulfillment_service;

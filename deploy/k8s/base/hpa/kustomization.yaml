@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: dark-kitchen
+
+resources:
+  - kitchen-service-hpa.yaml
+  - menu-service-hpa.yaml
+  - fulfillment-service-hpa.yaml
+  - kitchen-scheduler-worker-hpa.yaml
