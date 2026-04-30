@@ -9,7 +9,13 @@ from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite://")
 
-from app.api.routes import get_kitchen_client, get_menu_client, get_task_event_writer, get_task_publisher
+from app.api.routes import (
+    get_kitchen_client,
+    get_menu_client,
+    get_task_event_writer,
+    get_task_publisher,
+    get_task_transition_event_writer,
+)
 from app.db import Base, get_session
 from app.main import create_app
 from app.schemas import KitchenMenuItemSnapshot, KitchenSnapshot, RecipeSnapshot, RecipeStepSnapshot
@@ -115,6 +121,72 @@ class FakeTaskEventWriter:
         )
 
 
+class FakeTaskTransitionEventWriter:
+    def __init__(self, fail: bool = False) -> None:
+        self.fail = fail
+        self.events = []
+
+    async def write_task_displayed(self, task, dispatcher_id):
+        await self._append("TaskDisplayed", task, {"dispatcher_id": dispatcher_id})
+
+    async def write_task_started(self, task, station_worker_id):
+        await self._append(
+            "TaskStarted",
+            task,
+            {
+                "station_worker_id": station_worker_id,
+                "started_at": task.started_at.isoformat() if task.started_at else None,
+                "sla_deadline_at": task.sla_deadline_at.isoformat() if task.sla_deadline_at else None,
+            },
+        )
+
+    async def write_task_completed(self, task, station_worker_id):
+        await self._append(
+            "TaskCompleted",
+            task,
+            {
+                "station_worker_id": station_worker_id,
+                "actual_duration_seconds": task.actual_duration_seconds,
+                "delay_seconds": task.delay_seconds,
+            },
+        )
+
+    async def write_task_dispatch_failed(self, task, reason, dispatcher_id):
+        await self._append(
+            "TaskDispatchFailed",
+            task,
+            {"reason": reason, "dispatcher_id": dispatcher_id, "attempts": task.attempts},
+        )
+
+    async def write_order_ready_for_pickup(self, order, completed_tasks_count):
+        if self.fail:
+            raise RuntimeError("mongo failed")
+        self.events.append(
+            {
+                "event_type": "OrderReadyForPickup",
+                "order_id": str(order.id),
+                "kitchen_id": str(order.kitchen_id),
+                "payload": {"completed_tasks_count": completed_tasks_count},
+            }
+        )
+
+    async def _append(self, event_type, task, payload):
+        if self.fail:
+            raise RuntimeError("mongo failed")
+        self.events.append(
+            {
+                "event_type": event_type,
+                "task_id": str(task.id),
+                "order_id": str(task.order_id),
+                "kitchen_id": str(task.order.kitchen_id),
+                "station_type": task.station_type,
+                "station_id": str(task.station_id) if task.station_id else None,
+                "kds_task_id": str(task.kds_task_id) if task.kds_task_id else None,
+                "payload": payload,
+            }
+        )
+
+
 @pytest_asyncio.fixture
 async def session():
     engine = create_async_engine(
@@ -155,8 +227,11 @@ async def client():
     app.dependency_overrides[get_menu_client] = lambda: FakeMenuClient()
     app.dependency_overrides[get_task_publisher] = lambda: FakeTaskPublisher()
     app.dependency_overrides[get_task_event_writer] = lambda: FakeTaskEventWriter()
+    transition_event_writer = FakeTaskTransitionEventWriter()
+    app.dependency_overrides[get_task_transition_event_writer] = lambda: transition_event_writer
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http_client:
+        http_client.transition_event_writer = transition_event_writer
         yield http_client
 
     await engine.dispose()

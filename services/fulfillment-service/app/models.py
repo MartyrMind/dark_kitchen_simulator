@@ -62,6 +62,8 @@ class KitchenTask(Base):
         Index("ix_kitchen_tasks_menu_item_id", "menu_item_id"),
         Index("ix_kitchen_tasks_status", "status"),
         Index("ix_kitchen_tasks_station_type", "station_type"),
+        Index("ix_kitchen_tasks_station_id", "station_id"),
+        Index("ix_kitchen_tasks_kds_task_id", "kds_task_id"),
         Index("ix_kitchen_tasks_order_item_id", "order_item_id"),
         Index("ix_kitchen_tasks_redis_stream", "redis_stream"),
     )

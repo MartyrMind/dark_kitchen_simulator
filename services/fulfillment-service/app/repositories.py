@@ -1,7 +1,7 @@
 from uuid import UUID
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -32,6 +32,9 @@ class OrderRepository:
         )
         return result.first()
 
+    async def get_order_for_update(self, order_id: UUID) -> Order | None:
+        return await self.session.scalar(select(Order).where(Order.id == order_id).with_for_update())
+
 
 class KitchenTaskRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -61,3 +64,43 @@ class KitchenTaskRepository:
             task.redis_stream = stream
             task.redis_message_id = redis_message_id
         await self.session.flush()
+
+    async def get(self, task_id: UUID) -> KitchenTask | None:
+        return await self.session.scalar(
+            select(KitchenTask).where(KitchenTask.id == task_id).options(selectinload(KitchenTask.order))
+        )
+
+    async def get_for_update(self, task_id: UUID) -> KitchenTask | None:
+        return await self.session.scalar(
+            select(KitchenTask)
+            .where(KitchenTask.id == task_id)
+            .options(selectinload(KitchenTask.order))
+            .with_for_update()
+        )
+
+    async def unfinished_dependencies(self, task_id: UUID) -> list[UUID]:
+        result = await self.session.scalars(
+            select(TaskDependency.depends_on_task_id)
+            .join(KitchenTask, KitchenTask.id == TaskDependency.depends_on_task_id)
+            .where(TaskDependency.task_id == task_id, KitchenTask.status != TaskStatus.done)
+            .order_by(TaskDependency.depends_on_task_id)
+        )
+        return list(result)
+
+    async def all_order_tasks_done(self, order_id: UUID) -> bool:
+        unfinished_count = await self.session.scalar(
+            select(func.count(KitchenTask.id)).where(
+                KitchenTask.order_id == order_id,
+                KitchenTask.status != TaskStatus.done,
+            )
+        )
+        return int(unfinished_count or 0) == 0
+
+    async def completed_order_tasks_count(self, order_id: UUID) -> int:
+        count = await self.session.scalar(
+            select(func.count(KitchenTask.id)).where(
+                KitchenTask.order_id == order_id,
+                KitchenTask.status == TaskStatus.done,
+            )
+        )
+        return int(count or 0)

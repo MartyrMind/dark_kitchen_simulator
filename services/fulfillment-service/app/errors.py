@@ -15,7 +15,7 @@ def error_response(status_code: int, error: str, message: str, details: dict | N
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(FulfillmentError)
     async def fulfillment_error_handler(_: Request, exc: FulfillmentError) -> JSONResponse:
-        return error_response(exc.status_code, exc.error, exc.message)
+        return error_response(exc.status_code, exc.error, exc.message, exc.details)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:

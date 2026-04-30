@@ -3,10 +3,13 @@ class FulfillmentError(Exception):
     error = "internal_error"
     message = "Internal error"
 
-    def __init__(self, message: str | None = None) -> None:
+    details: dict = {}
+
+    def __init__(self, message: str | None = None, details: dict | None = None) -> None:
         super().__init__(message or self.message)
         if message is not None:
             self.message = message
+        self.details = details or {}
 
 
 class NotFoundError(FulfillmentError):

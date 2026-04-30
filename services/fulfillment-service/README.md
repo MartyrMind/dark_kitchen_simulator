@@ -2,7 +2,7 @@
 
 Fulfillment Service owns orders, order items, global kitchen task state, and task dependencies.
 
-Stage 5 boundary: this service publishes newly created kitchen tasks to Redis Streams and then marks them as `queued`. It does not consume Redis streams and does not implement KDS, workers, retries, DLQ, or dispatch logic.
+Stage 7 boundary: this service publishes newly created kitchen tasks to Redis Streams, owns global task state, and exposes internal task transition APIs. It does not consume Redis streams, implement the worker, call Kitchen Service KDS delivery, choose stations, run retries/DLQ, or implement KDS claim/complete endpoints.
 
 ## Local Setup
 
@@ -85,6 +85,40 @@ stream:kitchen:{kitchen_id}:station:{station_type}
 
 Only successfully published tasks are moved from `created` to `queued`, with `attempts=1`, `queued_at`, `redis_stream`, and `redis_message_id` filled. A minimal `TaskQueued` document is written to MongoDB collection `task_events`; Mongo write failures are logged but do not fail order creation.
 
+## Internal Task Transition API
+
+Fulfillment is the source of truth for global kitchen task statuses:
+
+```text
+queued -> displayed
+retrying -> displayed
+displayed -> in_progress
+in_progress -> done
+queued -> failed
+retrying -> failed
+```
+
+Internal endpoints:
+
+- `GET /internal/tasks/{task_id}`
+- `GET /internal/tasks/{task_id}/dispatch-readiness`
+- `POST /internal/tasks/{task_id}/mark-displayed`
+- `POST /internal/tasks/{task_id}/start`
+- `POST /internal/tasks/{task_id}/complete`
+- `POST /internal/tasks/{task_id}/dispatch-failed`
+
+Dispatch-readiness uses `task_dependencies`: a queued or retrying task is ready only when every dependency task is `done`. The readiness endpoint does not mutate task state.
+
+Transition events are written to MongoDB after the PostgreSQL transaction commits:
+
+- `TaskDisplayed`
+- `TaskStarted`
+- `TaskCompleted`
+- `TaskDispatchFailed`
+- `OrderReadyForPickup`
+
+MongoDB failures are logged and do not roll back task status transitions.
+
 ## Redis Inspection
 
 ```bash
@@ -118,4 +152,48 @@ curl http://localhost:8000/orders/{order_id}
 
 ```bash
 curl http://localhost:8000/orders/{order_id}/tasks
+```
+
+```bash
+curl http://localhost:8000/internal/tasks/{task_id}
+```
+
+```bash
+curl http://localhost:8000/internal/tasks/{task_id}/dispatch-readiness
+```
+
+```bash
+curl -X POST http://localhost:8000/internal/tasks/{task_id}/mark-displayed \
+  -H "Content-Type: application/json" \
+  -H "X-Correlation-ID: corr-manual-1" \
+  -d '{
+    "station_id": "7a7fef8e-560f-4d77-95ab-758d9a4ae4b8",
+    "kds_task_id": "9be0ec11-1be0-43dd-baf3-44cbf3043a9c",
+    "displayed_at": "2026-04-30T10:00:01Z",
+    "dispatcher_id": "scheduler-worker-1"
+  }'
+```
+
+```bash
+curl -X POST http://localhost:8000/internal/tasks/{task_id}/start \
+  -H "Content-Type: application/json" \
+  -H "X-Correlation-ID: corr-manual-1" \
+  -d '{
+    "station_id": "7a7fef8e-560f-4d77-95ab-758d9a4ae4b8",
+    "kds_task_id": "9be0ec11-1be0-43dd-baf3-44cbf3043a9c",
+    "station_worker_id": "grill-worker-1",
+    "started_at": "2026-04-30T10:02:00Z"
+  }'
+```
+
+```bash
+curl -X POST http://localhost:8000/internal/tasks/{task_id}/complete \
+  -H "Content-Type: application/json" \
+  -H "X-Correlation-ID: corr-manual-1" \
+  -d '{
+    "station_id": "7a7fef8e-560f-4d77-95ab-758d9a4ae4b8",
+    "kds_task_id": "9be0ec11-1be0-43dd-baf3-44cbf3043a9c",
+    "station_worker_id": "grill-worker-1",
+    "completed_at": "2026-04-30T10:08:00Z"
+  }'
 ```
