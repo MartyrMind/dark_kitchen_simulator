@@ -10,6 +10,10 @@ Thumbs.db
 .vscode/
 !.vscode/extensions.json
 !.vscode/settings.example.json
+!services/kitchen-service/.vscode/
+!services/kitchen-service/.vscode/launch.json
+!services/kitchen-service/.vscode/settings.json
+!services/kitchen-service/.vscode/tasks.json
 
 # =========================
 # Env / secrets
@@ -49,6 +53,9 @@ site/
 pip-wheel-metadata/
 
 .pytest_cache/
+.pytest_tmp/
+tmp-pytest/
+pytest-cache-files-*/
 .mypy_cache/
 .ruff_cache/
 .coverage
@@ -60,6 +67,8 @@ htmlcov/
 
 # Poetry
 poetry.lock
+!libs/python/dk_common/poetry.lock
+!services/kitchen-service/poetry.lock
 
 # uv
 uv.lock
@@ -153,6 +162,7 @@ grafana_data/
 .terraform.lock.hcl
 crash.log
 crash.*.log
+**/.vscode
 
 # =========================
 # Generated API clients / codegen
