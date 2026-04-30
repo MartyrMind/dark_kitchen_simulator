@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.clients import FulfillmentClient, get_fulfillment_client
 from app.db import get_session
 from app.events import MongoKdsEventWriter, get_event_writer
 from app.models import KdsStationTask, KdsTaskStatus, StationType
@@ -11,6 +12,10 @@ from app.schemas import (
     DispatchCandidateResponse,
     KitchenCreate,
     KitchenRead,
+    KdsTaskClaimRequest,
+    KdsTaskClaimResponse,
+    KdsTaskCompleteRequest,
+    KdsTaskCompleteResponse,
     KdsStationTaskResponse,
     KdsTaskDeliveryRequest,
     KdsTaskDeliveryResponse,
@@ -33,8 +38,9 @@ def get_kitchen_service(session: Annotated[AsyncSession, Depends(get_session)]) 
 def get_kds_service(
     session: Annotated[AsyncSession, Depends(get_session)],
     event_writer: Annotated[MongoKdsEventWriter, Depends(get_event_writer)],
+    fulfillment_client: Annotated[FulfillmentClient, Depends(get_fulfillment_client)],
 ) -> KdsService:
-    return KdsService(session, event_writer)
+    return KdsService(session, event_writer, fulfillment_client)
 
 
 def kds_task_delivery_response(task: KdsStationTask) -> KdsTaskDeliveryResponse:
@@ -58,6 +64,28 @@ def kds_station_task_response(task: KdsStationTask) -> KdsStationTaskResponse:
         estimated_duration_seconds=task.estimated_duration_seconds,
         pickup_deadline=task.pickup_deadline,
         displayed_at=task.displayed_at,
+    )
+
+
+def kds_task_claim_response(task: KdsStationTask) -> KdsTaskClaimResponse:
+    return KdsTaskClaimResponse(
+        kds_task_id=task.id,
+        task_id=task.task_id,
+        station_id=task.station_id,
+        status=task.status,
+        claimed_by=task.claimed_by or "",
+        claimed_at=task.claimed_at,
+    )
+
+
+def kds_task_complete_response(task: KdsStationTask) -> KdsTaskCompleteResponse:
+    return KdsTaskCompleteResponse(
+        kds_task_id=task.id,
+        task_id=task.task_id,
+        station_id=task.station_id,
+        status=task.status,
+        claimed_by=task.claimed_by or "",
+        completed_at=task.completed_at,
     )
 
 
@@ -167,3 +195,25 @@ async def list_kds_station_tasks(
 ):
     tasks = await service.list_station_tasks(station_id, task_status, limit, offset)
     return [kds_station_task_response(task) for task in tasks]
+
+
+@router.post("/kds/stations/{station_id}/tasks/{task_id}/claim", response_model=KdsTaskClaimResponse)
+async def claim_kds_task(
+    station_id: int,
+    task_id: str,
+    payload: KdsTaskClaimRequest,
+    service: Annotated[KdsService, Depends(get_kds_service)],
+):
+    task = await service.claim_task(station_id, task_id, payload, get_correlation_id())
+    return kds_task_claim_response(task)
+
+
+@router.post("/kds/stations/{station_id}/tasks/{task_id}/complete", response_model=KdsTaskCompleteResponse)
+async def complete_kds_task(
+    station_id: int,
+    task_id: str,
+    payload: KdsTaskCompleteRequest,
+    service: Annotated[KdsService, Depends(get_kds_service)],
+):
+    task = await service.complete_task(station_id, task_id, payload, get_correlation_id())
+    return kds_task_complete_response(task)

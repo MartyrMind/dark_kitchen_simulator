@@ -1,11 +1,21 @@
+from datetime import UTC, datetime
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
 
+from app.clients import FulfillmentClient, FulfillmentClientError
 from app.events import MongoKdsEventWriter
 from app.models import KdsStationTask, KdsTaskStatus, Kitchen, Station, StationStatus, StationType
 from app.repositories import KdsRepository, KitchenRepository, StationRepository
-from app.schemas import DispatchCandidateResponse, KdsTaskDeliveryRequest, KitchenCreate, StationCreate
+from app.schemas import (
+    DispatchCandidateResponse,
+    KdsTaskClaimRequest,
+    KdsTaskCompleteRequest,
+    KdsTaskDeliveryRequest,
+    KitchenCreate,
+    StationCreate,
+)
 
 
 class NotFoundError(Exception):
@@ -88,11 +98,17 @@ class KitchenService:
 
 
 class KdsService:
-    def __init__(self, session: AsyncSession, event_writer: MongoKdsEventWriter) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        event_writer: MongoKdsEventWriter,
+        fulfillment_client: FulfillmentClient,
+    ) -> None:
         self.session = session
         self.stations = StationRepository(session)
         self.kds = KdsRepository(session)
         self.event_writer = event_writer
+        self.fulfillment_client = fulfillment_client
 
     async def dispatch_candidates(
         self,
@@ -170,6 +186,137 @@ class KdsService:
             raise KdsDomainError("station_not_found", "Station not found", status_code=404)
         return await self.kds.list_station_tasks(station_id, task_status, limit, offset)
 
+    async def claim_task(
+        self,
+        station_id: int,
+        task_id: str,
+        payload: KdsTaskClaimRequest,
+        correlation_id: str | None,
+    ) -> KdsStationTask:
+        claimed_at = payload.claimed_at or datetime.now(UTC)
+        station = await self.stations.get_for_update(station_id)
+        if station is None:
+            raise KdsDomainError("station_not_found", "Station not found", status_code=404)
+
+        task = await self.kds.get_by_task_id_for_update(task_id)
+        if task is None:
+            raise KdsDomainError("kds_task_not_found", "KDS task not found", status_code=404)
+        try:
+            self._validate_claim(station, task)
+        except KdsDomainError as exc:
+            await self._write_kds_event(
+                "KdsTaskClaimRejected",
+                task,
+                payload.station_worker_id,
+                correlation_id,
+                {"reason": exc.code},
+            )
+            raise
+
+        task.status = KdsTaskStatus.claimed
+        task.claimed_by = payload.station_worker_id
+        task.claimed_at = claimed_at
+        station.busy_slots += 1
+        await self.session.commit()
+        await self.session.refresh(task)
+        await self.session.refresh(station)
+
+        try:
+            await self.fulfillment_client.start_task(
+                task.task_id,
+                station_id=station.id,
+                kds_task_id=task.id,
+                station_worker_id=payload.station_worker_id,
+                started_at=claimed_at,
+            )
+        except FulfillmentClientError as exc:
+            await self._compensate_claim(task.task_id, payload.station_worker_id, correlation_id, str(exc.code))
+            status_code = 503 if exc.code == "fulfillment_service_unavailable" else 409
+            message = (
+                "Fulfillment Service is unavailable"
+                if exc.code == "fulfillment_service_unavailable"
+                else "Fulfillment rejected task start"
+            )
+            raise KdsDomainError(exc.code, message, status_code=status_code) from exc
+
+        await self._write_kds_event(
+            "KdsTaskClaimed",
+            task,
+            payload.station_worker_id,
+            correlation_id,
+            {"claimed_at": claimed_at.isoformat()},
+        )
+        await self._write_station_event(
+            "StationBusySlotOccupied",
+            station,
+            correlation_id,
+            {"busy_slots": station.busy_slots, "capacity": station.capacity},
+        )
+        return task
+
+    async def complete_task(
+        self,
+        station_id: int,
+        task_id: str,
+        payload: KdsTaskCompleteRequest,
+        correlation_id: str | None,
+    ) -> KdsStationTask:
+        completed_at = payload.completed_at or datetime.now(UTC)
+        station = await self.stations.get_for_update(station_id)
+        if station is None:
+            raise KdsDomainError("station_not_found", "Station not found", status_code=404)
+
+        task = await self.kds.get_by_task_id_for_update(task_id)
+        if task is None:
+            raise KdsDomainError("kds_task_not_found", "KDS task not found", status_code=404)
+        self._validate_complete(station, task, payload.station_worker_id)
+        await self.session.commit()
+
+        try:
+            await self.fulfillment_client.complete_task(
+                task.task_id,
+                station_id=station.id,
+                kds_task_id=task.id,
+                station_worker_id=payload.station_worker_id,
+                completed_at=completed_at,
+            )
+        except FulfillmentClientError as exc:
+            status_code = 503 if exc.code == "fulfillment_service_unavailable" else 409
+            message = (
+                "Fulfillment Service is unavailable"
+                if exc.code == "fulfillment_service_unavailable"
+                else "Fulfillment rejected task complete"
+            )
+            raise KdsDomainError(exc.code, message, status_code=status_code) from exc
+
+        station = await self.stations.get_for_update(station_id)
+        task = await self.kds.get_by_task_id_for_update(task_id)
+        if station is None or task is None:
+            raise KdsDomainError("kds_task_not_found", "KDS task not found", status_code=404)
+        self._validate_complete(station, task, payload.station_worker_id)
+
+        task.status = KdsTaskStatus.completed
+        task.completed_at = completed_at
+        station.busy_slots = max(0, station.busy_slots - 1)
+        await self.session.commit()
+        await self.session.refresh(task)
+        await self.session.refresh(station)
+
+        await self._write_kds_event(
+            "KdsTaskCompleted",
+            task,
+            payload.station_worker_id,
+            correlation_id,
+            {"completed_at": completed_at.isoformat()},
+        )
+        await self._write_station_event(
+            "StationBusySlotReleased",
+            station,
+            correlation_id,
+            {"busy_slots": station.busy_slots, "capacity": station.capacity, "reason": "task_completed"},
+        )
+        return task
+
     def _validate_delivery_station(self, station: Station, payload: KdsTaskDeliveryRequest) -> None:
         if station.status != StationStatus.available:
             raise KdsDomainError("station_not_available", "Station is not available")
@@ -177,3 +324,105 @@ class KdsService:
             raise KdsDomainError("station_kitchen_mismatch", "Station belongs to another kitchen")
         if station.station_type != payload.station_type:
             raise KdsDomainError("station_type_mismatch", "Station type does not match task station type")
+
+    def _validate_claim(self, station: Station, task: KdsStationTask) -> None:
+        if task.station_id != station.id:
+            raise KdsDomainError("kds_task_station_mismatch", "KDS task belongs to another station")
+        if station.status != StationStatus.available:
+            raise KdsDomainError("station_not_available", "Station is not available")
+        if task.status == KdsTaskStatus.claimed:
+            raise KdsDomainError("task_already_claimed", "Task is already claimed")
+        if task.status != KdsTaskStatus.displayed:
+            raise KdsDomainError("task_not_displayed", "Task is not displayed")
+        if station.busy_slots >= station.capacity:
+            raise KdsDomainError("station_capacity_exceeded", "Station capacity is exceeded")
+
+    def _validate_complete(self, station: Station, task: KdsStationTask, station_worker_id: str) -> None:
+        if task.station_id != station.id:
+            raise KdsDomainError("kds_task_station_mismatch", "KDS task belongs to another station")
+        if task.status == KdsTaskStatus.completed:
+            raise KdsDomainError("task_already_completed", "Task is already completed")
+        if task.status != KdsTaskStatus.claimed:
+            raise KdsDomainError("task_not_claimed", "Task is not claimed")
+        if task.claimed_by != station_worker_id:
+            raise KdsDomainError("task_claimed_by_another_worker", "Task is claimed by another worker")
+
+    async def _compensate_claim(
+        self,
+        task_id: str,
+        station_worker_id: str,
+        correlation_id: str | None,
+        reason: str,
+    ) -> None:
+        task = await self.kds.get_by_task_id_for_update(task_id)
+        if task is None:
+            await self.session.rollback()
+            return
+        station = await self.stations.get_for_update(task.station_id)
+        if station is None:
+            await self.session.rollback()
+            return
+
+        if task.status == KdsTaskStatus.claimed and task.claimed_by == station_worker_id:
+            task.status = KdsTaskStatus.displayed
+            task.claimed_by = None
+            task.claimed_at = None
+            station.busy_slots = max(0, station.busy_slots - 1)
+            await self.session.commit()
+            await self.session.refresh(task)
+            await self.session.refresh(station)
+
+            await self._write_kds_event(
+                "KdsTaskClaimRejected",
+                task,
+                station_worker_id,
+                correlation_id,
+                {"reason": reason},
+            )
+            await self._write_station_event(
+                "StationBusySlotReleased",
+                station,
+                correlation_id,
+                {"busy_slots": station.busy_slots, "capacity": station.capacity, "reason": "claim_compensation"},
+            )
+        else:
+            await self.session.rollback()
+
+    async def _write_kds_event(
+        self,
+        event_type: str,
+        task: KdsStationTask,
+        station_worker_id: str,
+        correlation_id: str | None,
+        payload: dict,
+    ) -> None:
+        try:
+            await self.event_writer.write_kds_event(event_type, task, station_worker_id, correlation_id, payload)
+        except Exception as exc:
+            logger.bind(event="kds_event_failed", task_id=task.task_id).error(
+                "failed to write {} event: {}",
+                event_type,
+                exc,
+            )
+
+    async def _write_station_event(
+        self,
+        event_type: str,
+        station: Station,
+        correlation_id: str | None,
+        payload: dict,
+    ) -> None:
+        try:
+            await self.event_writer.write_station_event(
+                event_type,
+                kitchen_id=station.kitchen_id,
+                station_id=station.id,
+                correlation_id=correlation_id,
+                payload=payload,
+            )
+        except Exception as exc:
+            logger.bind(event="station_event_failed", station_id=station.id).error(
+                "failed to write {} event: {}",
+                event_type,
+                exc,
+            )

@@ -91,3 +91,31 @@ class KdsStationTaskResponse(BaseModel):
     estimated_duration_seconds: int
     pickup_deadline: datetime | None
     displayed_at: datetime
+
+
+class KdsTaskClaimRequest(BaseModel):
+    station_worker_id: str = Field(min_length=1, max_length=120)
+    claimed_at: datetime | None = None
+
+
+class KdsTaskClaimResponse(BaseModel):
+    kds_task_id: int
+    task_id: UUID
+    station_id: int
+    status: KdsTaskStatus
+    claimed_by: str
+    claimed_at: datetime
+
+
+class KdsTaskCompleteRequest(BaseModel):
+    station_worker_id: str = Field(min_length=1, max_length=120)
+    completed_at: datetime | None = None
+
+
+class KdsTaskCompleteResponse(BaseModel):
+    kds_task_id: int
+    task_id: UUID
+    station_id: int
+    status: KdsTaskStatus
+    claimed_by: str
+    completed_at: datetime

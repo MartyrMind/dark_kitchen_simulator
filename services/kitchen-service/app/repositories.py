@@ -131,6 +131,11 @@ class KdsRepository:
     async def get_by_task_id(self, task_id: str) -> KdsStationTask | None:
         return await self.session.scalar(select(KdsStationTask).where(KdsStationTask.task_id == task_id))
 
+    async def get_by_task_id_for_update(self, task_id: str) -> KdsStationTask | None:
+        return await self.session.scalar(
+            select(KdsStationTask).where(KdsStationTask.task_id == task_id).with_for_update()
+        )
+
     async def list_station_tasks(
         self,
         station_id: int,

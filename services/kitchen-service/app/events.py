@@ -48,6 +48,74 @@ class MongoKdsEventWriter:
                 station_id=task.station_id,
             ).error("failed to write KdsTaskDisplayed event: {}", exc)
 
+    async def write_kds_event(
+        self,
+        event_type: str,
+        task: KdsStationTask,
+        station_worker_id: str,
+        correlation_id: str | None,
+        payload: dict[str, Any],
+    ) -> None:
+        if not settings.mongo_events_enabled:
+            return
+
+        event = {
+            "event_type": event_type,
+            "task_id": task.task_id,
+            "kds_task_id": task.id,
+            "order_id": task.order_id,
+            "kitchen_id": task.kitchen_id,
+            "station_id": task.station_id,
+            "station_type": str(task.station_type),
+            "station_worker_id": station_worker_id,
+            "payload": payload,
+            "correlation_id": correlation_id,
+            "service": settings.service_name,
+            "created_at": datetime.now(UTC),
+        }
+        await self._safe_insert("kds_events", event, event_type, task.task_id, task.station_id)
+
+    async def write_station_event(
+        self,
+        event_type: str,
+        *,
+        kitchen_id: int,
+        station_id: int,
+        correlation_id: str | None,
+        payload: dict[str, Any],
+    ) -> None:
+        if not settings.mongo_events_enabled:
+            return
+
+        event = {
+            "event_type": event_type,
+            "kitchen_id": kitchen_id,
+            "station_id": station_id,
+            "payload": payload,
+            "correlation_id": correlation_id,
+            "service": settings.service_name,
+            "created_at": datetime.now(UTC),
+        }
+        await self._safe_insert("station_events", event, event_type, None, station_id)
+
+    async def _safe_insert(
+        self,
+        collection: str,
+        event: dict[str, Any],
+        event_type: str,
+        task_id: str | None,
+        station_id: int,
+    ) -> None:
+        try:
+            client = self._get_client()
+            await client[settings.mongo_database][collection].insert_one(event)
+        except Exception as exc:
+            logger.bind(
+                event=f"{event_type}_event_failed",
+                task_id=task_id,
+                station_id=station_id,
+            ).error("failed to write {} event: {}", event_type, exc)
+
     def _get_client(self) -> Any:
         if self._client is None:
             from motor.motor_asyncio import AsyncIOMotorClient
