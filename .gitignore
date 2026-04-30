@@ -70,6 +70,7 @@ poetry.lock
 !libs/python/dk_common/poetry.lock
 !services/kitchen-service/poetry.lock
 !services/menu-service/poetry.lock
+!services/fulfillment-service/poetry.lock
 
 # uv
 uv.lock
