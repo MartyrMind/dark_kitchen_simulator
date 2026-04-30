@@ -19,3 +19,13 @@ class ConflictError(FulfillmentError):
 
 class ExternalServiceUnavailableError(FulfillmentError):
     status_code = 503
+
+
+class RedisUnavailableError(ExternalServiceUnavailableError):
+    error = "redis_unavailable"
+    message = "Redis is unavailable"
+
+
+class TaskPublishFailedError(ExternalServiceUnavailableError):
+    error = "task_publish_failed"
+    message = "Task publish failed"

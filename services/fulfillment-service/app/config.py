@@ -13,6 +13,12 @@ class Settings(BaseServiceSettings):
     menu_service_url: str = Field(default="http://localhost:8002", validation_alias="MENU_SERVICE_URL")
     http_timeout_seconds: float = Field(default=3.0, validation_alias="HTTP_TIMEOUT_SECONDS")
     enable_redis_publishing: bool = Field(default=False, validation_alias="ENABLE_REDIS_PUBLISHING")
+    redis_url: str = Field(default="redis://localhost:6379/0", validation_alias="REDIS_URL")
+    redis_task_stream_prefix: str = Field(default="stream:kitchen", validation_alias="REDIS_TASK_STREAM_PREFIX")
+    redis_publish_enabled: bool = Field(default=True, validation_alias="REDIS_PUBLISH_ENABLED")
+    mongo_url: str = Field(default="mongodb://localhost:27017", validation_alias="MONGO_URL")
+    mongo_database: str = Field(default="dark_kitchen_events", validation_alias="MONGO_DATABASE")
+    mongo_events_enabled: bool = Field(default=True, validation_alias="MONGO_EVENTS_ENABLED")
 
 
 settings = Settings()

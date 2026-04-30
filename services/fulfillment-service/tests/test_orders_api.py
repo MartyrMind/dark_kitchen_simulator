@@ -18,8 +18,11 @@ async def test_post_order_and_get_order_and_tasks(client, order_payload):
     assert tasks_response.status_code == 200
     tasks = tasks_response.json()
     assert len(tasks) == 4
-    assert {task["status"] for task in tasks} == {"created"}
-    assert "queued" not in {task["status"] for task in tasks}
+    assert {task["status"] for task in tasks} == {"queued"}
+    assert {task["attempts"] for task in tasks} == {1}
+    assert all(task["queued_at"] for task in tasks)
+    assert all(task["redis_stream"] for task in tasks)
+    assert all(task["redis_message_id"] for task in tasks)
     assert [task["recipe_step_order"] for task in tasks] == [1, 2, 1, 2]
     assert len([task for task in tasks if task["depends_on_task_ids"]]) == 2
 
@@ -31,8 +34,9 @@ async def test_unknown_order_returns_404(client):
     assert response.json()["error"] == "order_not_found"
 
 
-async def test_post_order_does_not_require_redis(client, order_payload):
+async def test_post_order_queues_tasks(client, order_payload):
     response = await client.post("/orders", json=order_payload)
 
     assert response.status_code == 201
     assert response.json()["tasks_count"] == 4
+    assert response.json()["queued_tasks_count"] == 4

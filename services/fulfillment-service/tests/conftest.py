@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite://")
 
-from app.api.routes import get_kitchen_client, get_menu_client
+from app.api.routes import get_kitchen_client, get_menu_client, get_task_event_writer, get_task_publisher
 from app.db import Base, get_session
 from app.main import create_app
 from app.schemas import KitchenMenuItemSnapshot, KitchenSnapshot, RecipeSnapshot, RecipeStepSnapshot
@@ -47,8 +47,8 @@ class FakeMenuClient:
     async def get_kitchen_menu(self, kitchen_id):
         self.menu_calls += 1
         return [
-            KitchenMenuItemSnapshot(id=BURGER_ID, status="active", is_available=self.available),
-            KitchenMenuItemSnapshot(id=FRIES_ID, status="active", is_available=False),
+            KitchenMenuItemSnapshot(id=BURGER_ID, name="Burger", status="active", is_available=self.available),
+            KitchenMenuItemSnapshot(id=FRIES_ID, name="Fries", status="active", is_available=False),
         ]
 
     async def get_recipe(self, menu_item_id):
@@ -68,6 +68,51 @@ class FakeMenuClient:
             ),
         ]
         return RecipeSnapshot(menu_item_id=menu_item_id, steps=steps)
+
+
+class FakeTaskPublisher:
+    def __init__(self, fail: bool = False) -> None:
+        self.fail = fail
+        self.published = []
+
+    async def publish_task(self, task, order, menu_item_name):
+        from app.domain.errors import TaskPublishFailedError
+        from app.redis.streams import build_task_stream_name
+
+        if self.fail:
+            raise TaskPublishFailedError()
+        stream = build_task_stream_name(order.kitchen_id, task.station_type)
+        redis_message_id = f"fake-{len(self.published)}-0"
+        self.published.append(
+            {
+                "task_id": task.id,
+                "order_id": order.id,
+                "stream": stream,
+                "redis_message_id": redis_message_id,
+                "menu_item_name": menu_item_name,
+            }
+        )
+        return stream, redis_message_id
+
+
+class FakeTaskEventWriter:
+    def __init__(self, fail: bool = False) -> None:
+        self.fail = fail
+        self.events = []
+
+    async def write_task_queued(self, task, order, stream, redis_message_id):
+        if self.fail:
+            raise RuntimeError("mongo failed")
+        self.events.append(
+            {
+                "event_type": "TaskQueued",
+                "task_id": str(task.id),
+                "order_id": str(order.id),
+                "kitchen_id": str(order.kitchen_id),
+                "station_type": task.station_type,
+                "payload": {"stream": stream, "redis_message_id": redis_message_id},
+            }
+        )
 
 
 @pytest_asyncio.fixture
@@ -108,6 +153,8 @@ async def client():
     app.dependency_overrides[get_session] = override_get_session
     app.dependency_overrides[get_kitchen_client] = lambda: FakeKitchenClient()
     app.dependency_overrides[get_menu_client] = lambda: FakeMenuClient()
+    app.dependency_overrides[get_task_publisher] = lambda: FakeTaskPublisher()
+    app.dependency_overrides[get_task_event_writer] = lambda: FakeTaskEventWriter()
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http_client:
         yield http_client

@@ -1,20 +1,26 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import get_session
-from app.models import StationType
+from app.events import MongoKdsEventWriter, get_event_writer
+from app.models import KdsStationTask, KdsTaskStatus, StationType
 from app.schemas import (
+    DispatchCandidateResponse,
     KitchenCreate,
     KitchenRead,
+    KdsStationTaskResponse,
+    KdsTaskDeliveryRequest,
+    KdsTaskDeliveryResponse,
     StationCapacityUpdate,
     StationCreate,
     StationRead,
     StationStatusUpdate,
 )
-from app.services import KitchenService
+from app.services import KdsService, KitchenService
+from dk_common.correlation import get_correlation_id
 from dk_common.health import build_health_response
 
 router = APIRouter()
@@ -22,6 +28,37 @@ router = APIRouter()
 
 def get_kitchen_service(session: Annotated[AsyncSession, Depends(get_session)]) -> KitchenService:
     return KitchenService(session)
+
+
+def get_kds_service(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    event_writer: Annotated[MongoKdsEventWriter, Depends(get_event_writer)],
+) -> KdsService:
+    return KdsService(session, event_writer)
+
+
+def kds_task_delivery_response(task: KdsStationTask) -> KdsTaskDeliveryResponse:
+    return KdsTaskDeliveryResponse(
+        kds_task_id=task.id,
+        task_id=task.task_id,
+        station_id=task.station_id,
+        status=task.status,
+    )
+
+
+def kds_station_task_response(task: KdsStationTask) -> KdsStationTaskResponse:
+    return KdsStationTaskResponse(
+        kds_task_id=task.id,
+        task_id=task.task_id,
+        order_id=task.order_id,
+        station_id=task.station_id,
+        operation=task.operation,
+        menu_item_name=task.menu_item_name,
+        status=task.status,
+        estimated_duration_seconds=task.estimated_duration_seconds,
+        pickup_deadline=task.pickup_deadline,
+        displayed_at=task.displayed_at,
+    )
 
 
 @router.get("/health")
@@ -92,3 +129,41 @@ async def update_station_status(
     service: Annotated[KitchenService, Depends(get_kitchen_service)],
 ):
     return await service.update_station_status(station_id, payload.status)
+
+
+@router.get("/internal/kds/dispatch-candidates", response_model=list[DispatchCandidateResponse])
+async def dispatch_candidates(
+    kitchen_id: int,
+    station_type: StationType,
+    service: Annotated[KdsService, Depends(get_kds_service)],
+):
+    return await service.dispatch_candidates(kitchen_id, station_type)
+
+
+@router.post(
+    "/internal/kds/stations/{station_id}/tasks",
+    response_model=KdsTaskDeliveryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def deliver_kds_task(
+    station_id: int,
+    payload: KdsTaskDeliveryRequest,
+    response: Response,
+    service: Annotated[KdsService, Depends(get_kds_service)],
+):
+    task, created = await service.deliver_task(station_id, payload, get_correlation_id())
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return kds_task_delivery_response(task)
+
+
+@router.get("/kds/stations/{station_id}/tasks", response_model=list[KdsStationTaskResponse])
+async def list_kds_station_tasks(
+    station_id: int,
+    service: Annotated[KdsService, Depends(get_kds_service)],
+    task_status: KdsTaskStatus = Query(default=KdsTaskStatus.displayed, alias="status"),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+):
+    tasks = await service.list_station_tasks(station_id, task_status, limit, offset)
+    return [kds_station_task_response(task) for task in tasks]

@@ -39,6 +39,7 @@ class OrderRead(BaseModel):
 
 class OrderCreatedRead(OrderRead):
     tasks_count: int
+    queued_tasks_count: int = 0
 
 
 class KitchenTaskRead(BaseModel):
@@ -52,6 +53,9 @@ class KitchenTaskRead(BaseModel):
     station_id: UUID | None
     kds_task_id: UUID | None
     attempts: int
+    queued_at: datetime | None
+    redis_stream: str | None
+    redis_message_id: str | None
     recipe_step_order: int
     item_unit_index: int
     depends_on_task_ids: list[UUID]
@@ -66,6 +70,7 @@ class KitchenSnapshot(BaseModel):
 
 class KitchenMenuItemSnapshot(BaseModel):
     id: UUID
+    name: str = ""
     status: str
     is_available: bool
 

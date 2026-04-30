@@ -8,6 +8,10 @@ from app.clients.kitchen import KitchenServiceClient
 from app.clients.menu import MenuServiceClient
 from app.config import settings
 from app.db import get_session
+from app.events.mongo import create_mongo_client
+from app.events.task_events import TaskQueuedEventWriter
+from app.redis.client import create_redis_client
+from app.redis.streams import RedisTaskPublisher
 from app.schemas import KitchenTaskRead, OrderCreate, OrderCreatedRead, OrderRead
 from app.services import OrderCreationService
 from dk_common.health import build_health_response
@@ -23,12 +27,26 @@ def get_menu_client() -> MenuServiceClient:
     return MenuServiceClient()
 
 
+def get_task_publisher() -> RedisTaskPublisher | None:
+    if not settings.redis_publish_enabled:
+        return None
+    return RedisTaskPublisher(create_redis_client(), settings.redis_task_stream_prefix)
+
+
+def get_task_event_writer() -> TaskQueuedEventWriter:
+    if not settings.mongo_events_enabled:
+        return TaskQueuedEventWriter(None, enabled=False)
+    return TaskQueuedEventWriter(create_mongo_client())
+
+
 def get_order_service(
     session: Annotated[AsyncSession, Depends(get_session)],
     kitchen_client: Annotated[KitchenServiceClient, Depends(get_kitchen_client)],
     menu_client: Annotated[MenuServiceClient, Depends(get_menu_client)],
+    task_publisher: Annotated[RedisTaskPublisher | None, Depends(get_task_publisher)],
+    task_event_writer: Annotated[TaskQueuedEventWriter, Depends(get_task_event_writer)],
 ) -> OrderCreationService:
-    return OrderCreationService(session, kitchen_client, menu_client)
+    return OrderCreationService(session, kitchen_client, menu_client, task_publisher, task_event_writer)
 
 
 @router.get("/health")

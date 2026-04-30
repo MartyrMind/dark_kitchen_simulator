@@ -1,10 +1,12 @@
 from uuid import UUID
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import KitchenTask, Order, OrderItem, TaskDependency
+from app.domain.statuses import TaskStatus
 from app.schemas import OrderCreate
 
 
@@ -49,3 +51,13 @@ class KitchenTaskRepository:
             .order_by(KitchenTask.order_item_id, KitchenTask.item_unit_index, KitchenTask.recipe_step_order)
         )
         return list(result)
+
+    async def mark_tasks_queued(self, published_tasks: list[tuple[KitchenTask, str, str]]) -> None:
+        queued_at = datetime.now(UTC)
+        for task, stream, redis_message_id in published_tasks:
+            task.status = TaskStatus.queued
+            task.attempts = 1
+            task.queued_at = queued_at
+            task.redis_stream = stream
+            task.redis_message_id = redis_message_id
+        await self.session.flush()

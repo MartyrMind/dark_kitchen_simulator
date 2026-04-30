@@ -63,6 +63,7 @@ class KitchenTask(Base):
         Index("ix_kitchen_tasks_status", "status"),
         Index("ix_kitchen_tasks_station_type", "station_type"),
         Index("ix_kitchen_tasks_order_item_id", "order_item_id"),
+        Index("ix_kitchen_tasks_redis_stream", "redis_stream"),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
@@ -82,6 +83,9 @@ class KitchenTask(Base):
     actual_duration_seconds: Mapped[int | None] = mapped_column(nullable=True)
     delay_seconds: Mapped[int | None] = mapped_column(nullable=True)
     attempts: Mapped[int] = mapped_column(nullable=False, default=0)
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    redis_stream: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    redis_message_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     recipe_step_order: Mapped[int] = mapped_column(nullable=False)
     item_unit_index: Mapped[int] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

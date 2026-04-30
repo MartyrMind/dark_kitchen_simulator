@@ -3,7 +3,7 @@ import pytest
 from app.clients.kitchen import KitchenNotActiveError
 from app.clients.menu import MenuItemNotAvailableError, RecipeStepsNotFoundError
 from app.services import OrderCreationService
-from conftest import BURGER_ID, FakeKitchenClient, FakeMenuClient, KITCHEN_ID
+from conftest import BURGER_ID, FakeKitchenClient, FakeMenuClient, FakeTaskEventWriter, FakeTaskPublisher, KITCHEN_ID
 
 
 def _payload(quantity: int = 2):
@@ -13,7 +13,9 @@ def _payload(quantity: int = 2):
 
 
 async def test_create_order_creates_items_tasks_and_dependencies(session):
-    service = OrderCreationService(session, FakeKitchenClient(), FakeMenuClient())
+    publisher = FakeTaskPublisher()
+    event_writer = FakeTaskEventWriter()
+    service = OrderCreationService(session, FakeKitchenClient(), FakeMenuClient(), publisher, event_writer)
 
     created = await service.create_order(_payload())
     tasks = await service.list_order_tasks(created.id)
@@ -23,27 +25,48 @@ async def test_create_order_creates_items_tasks_and_dependencies(session):
     assert len(created.items) == 1
     assert created.items[0].quantity == 2
     assert len(tasks) == 4
-    assert [task.status for task in tasks] == ["created", "created", "created", "created"]
-    assert "queued" not in [task.status for task in tasks]
+    assert [task.status for task in tasks] == ["queued", "queued", "queued", "queued"]
+    assert [task.attempts for task in tasks] == [1, 1, 1, 1]
+    assert created.queued_tasks_count == 4
+    assert len(publisher.published) == 4
+    assert len(event_writer.events) == 4
     assert len([task for task in tasks if task.depends_on_task_ids]) == 2
 
 
 async def test_create_order_rejects_inactive_kitchen(session):
-    service = OrderCreationService(session, FakeKitchenClient(status="inactive"), FakeMenuClient())
+    service = OrderCreationService(
+        session,
+        FakeKitchenClient(status="inactive"),
+        FakeMenuClient(),
+        FakeTaskPublisher(),
+        FakeTaskEventWriter(),
+    )
 
     with pytest.raises(KitchenNotActiveError):
         await service.create_order(_payload())
 
 
 async def test_create_order_rejects_unavailable_menu_item(session):
-    service = OrderCreationService(session, FakeKitchenClient(), FakeMenuClient(available=False))
+    service = OrderCreationService(
+        session,
+        FakeKitchenClient(),
+        FakeMenuClient(available=False),
+        FakeTaskPublisher(),
+        FakeTaskEventWriter(),
+    )
 
     with pytest.raises(MenuItemNotAvailableError):
         await service.create_order(_payload())
 
 
 async def test_create_order_rejects_empty_recipe(session):
-    service = OrderCreationService(session, FakeKitchenClient(), FakeMenuClient(empty_recipe=True))
+    service = OrderCreationService(
+        session,
+        FakeKitchenClient(),
+        FakeMenuClient(empty_recipe=True),
+        FakeTaskPublisher(),
+        FakeTaskEventWriter(),
+    )
 
     with pytest.raises(RecipeStepsNotFoundError):
         await service.create_order(_payload())
