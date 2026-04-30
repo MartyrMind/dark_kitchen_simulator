@@ -7,11 +7,12 @@ from app.models import KdsTaskStatus, KitchenStatus, StationStatus, StationType
 
 
 class KitchenCreate(BaseModel):
+    id: UUID | None = None
     name: str = Field(min_length=1, max_length=120)
 
 
 class KitchenRead(BaseModel):
-    id: int
+    id: UUID
     name: str
     status: KitchenStatus
     created_at: datetime
@@ -21,6 +22,7 @@ class KitchenRead(BaseModel):
 
 
 class StationCreate(BaseModel):
+    id: UUID | None = None
     name: str = Field(min_length=1, max_length=120)
     station_type: StationType
     capacity: int = Field(ge=1)
@@ -28,8 +30,8 @@ class StationCreate(BaseModel):
 
 
 class StationRead(BaseModel):
-    id: int
-    kitchen_id: int
+    id: UUID
+    kitchen_id: UUID
     name: str
     station_type: StationType
     status: StationStatus
@@ -53,7 +55,7 @@ class StationStatusUpdate(BaseModel):
 class KdsTaskDeliveryRequest(BaseModel):
     task_id: UUID
     order_id: UUID
-    kitchen_id: int
+    kitchen_id: UUID
     station_type: StationType
     operation: str = Field(min_length=1, max_length=120)
     menu_item_name: str | None = Field(default=None, max_length=120)
@@ -63,14 +65,14 @@ class KdsTaskDeliveryRequest(BaseModel):
 
 
 class KdsTaskDeliveryResponse(BaseModel):
-    kds_task_id: int
+    kds_task_id: UUID
     task_id: UUID
-    station_id: int
+    station_id: UUID
     status: KdsTaskStatus
 
 
 class DispatchCandidateResponse(BaseModel):
-    station_id: int
+    station_id: UUID
     station_type: StationType
     status: StationStatus
     capacity: int
@@ -81,10 +83,10 @@ class DispatchCandidateResponse(BaseModel):
 
 
 class KdsStationTaskResponse(BaseModel):
-    kds_task_id: int
+    kds_task_id: UUID
     task_id: UUID
     order_id: UUID
-    station_id: int
+    station_id: UUID
     operation: str
     menu_item_name: str | None
     status: KdsTaskStatus
@@ -99,9 +101,9 @@ class KdsTaskClaimRequest(BaseModel):
 
 
 class KdsTaskClaimResponse(BaseModel):
-    kds_task_id: int
+    kds_task_id: UUID
     task_id: UUID
-    station_id: int
+    station_id: UUID
     status: KdsTaskStatus
     claimed_by: str
     claimed_at: datetime
@@ -113,9 +115,9 @@ class KdsTaskCompleteRequest(BaseModel):
 
 
 class KdsTaskCompleteResponse(BaseModel):
-    kds_task_id: int
+    kds_task_id: UUID
     task_id: UUID
-    station_id: int
+    station_id: UUID
     status: KdsTaskStatus
     claimed_by: str
     completed_at: datetime

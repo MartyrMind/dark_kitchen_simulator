@@ -1,7 +1,7 @@
 """add kds station tasks
 
-Revision ID: 0002_add_kds_station_tasks
-Revises: 0001_create_kitchens_and_stations
+Revision ID: ksvc_0002
+Revises: ksvc_0001
 Create Date: 2026-04-30
 """
 
@@ -10,8 +10,8 @@ from collections.abc import Sequence
 from alembic import op
 import sqlalchemy as sa
 
-revision: str = "0002_add_kds_station_tasks"
-down_revision: str | None = "0001_create_kitchens_and_stations"
+revision: str = "ksvc_0002"
+down_revision: str | None = "ksvc_0001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -19,11 +19,11 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.create_table(
         "kds_station_tasks",
-        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("task_id", sa.String(length=36), nullable=False),
         sa.Column("order_id", sa.String(length=36), nullable=False),
-        sa.Column("kitchen_id", sa.Integer(), nullable=False),
-        sa.Column("station_id", sa.Integer(), nullable=False),
+        sa.Column("kitchen_id", sa.Uuid(), nullable=False),
+        sa.Column("station_id", sa.Uuid(), nullable=False),
         sa.Column("station_type", sa.String(length=32), nullable=False),
         sa.Column("operation", sa.String(length=120), nullable=False),
         sa.Column("menu_item_name", sa.String(length=120), nullable=True),

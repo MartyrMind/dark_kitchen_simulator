@@ -144,3 +144,18 @@ curl -X POST http://localhost:8001/kds/stations/1/tasks/8f39f9fc-9c17-4995-8767-
 ```
 
 Completing by a different worker returns `409 Conflict` with `error = task_claimed_by_another_worker`.
+# Observability
+
+`GET /metrics` exposes generic HTTP metrics plus KDS/station metrics:
+
+```text
+kds_visible_backlog_size
+kds_claim_attempts_total
+kds_claim_success_total
+kds_claim_conflicts_total
+station_busy_slots
+station_capacity
+station_utilization_ratio
+```
+
+MongoDB events are written to `kds_events`, `station_events`, and `app_audit_events` in `dark_kitchen_events`.

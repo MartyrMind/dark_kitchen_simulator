@@ -192,7 +192,7 @@ async def test_kds_event_is_written_for_new_delivery(monkeypatch, client):
     assert len(fake.events) == 1
     task, correlation_id = fake.events[0]
     assert task.task_id == response.json()["task_id"]
-    assert task.id == response.json()["kds_task_id"]
+    assert str(task.id) == response.json()["kds_task_id"]
     assert task.idempotency_key.endswith(":dispatch:v1")
     assert correlation_id == "corr-test-1"
 
@@ -270,7 +270,7 @@ async def test_kds_claim_success_calls_fulfillment_and_writes_events(monkeypatch
     stations = await client.get(f"/kitchens/{kitchen_id}/stations")
     assert stations.json()[0]["busy_slots"] == 1
     assert fake_events.kds_events[0][0] == "KdsTaskClaimed"
-    assert fake_events.station_events[0][0] == "StationBusySlotOccupied"
+    assert "StationBusySlotOccupied" in [event_type for event_type, _ in fake_events.station_events]
 
 
 async def test_kds_double_claim_is_rejected(client):

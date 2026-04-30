@@ -21,8 +21,8 @@ class FulfillmentClient:
         self,
         task_id: str,
         *,
-        station_id: int,
-        kds_task_id: int,
+        station_id: str,
+        kds_task_id: str,
         station_worker_id: str,
         started_at: datetime,
     ) -> None:
@@ -41,8 +41,8 @@ class FulfillmentClient:
         self,
         task_id: str,
         *,
-        station_id: int,
-        kds_task_id: int,
+        station_id: str,
+        kds_task_id: str,
         station_worker_id: str,
         completed_at: datetime,
     ) -> None:

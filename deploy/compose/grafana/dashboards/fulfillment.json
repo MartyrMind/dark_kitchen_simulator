@@ -1,0 +1,15 @@
+{
+  "uid": "dark-kitchen-fulfillment",
+  "title": "Fulfillment",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {"type": "timeseries", "title": "orders created rate", "gridPos": {"x": 0, "y": 0, "w": 8, "h": 8}, "targets": [{"expr": "sum(rate(orders_created_total[5m]))"}]},
+    {"type": "timeseries", "title": "orders ready rate", "gridPos": {"x": 8, "y": 0, "w": 8, "h": 8}, "targets": [{"expr": "sum(rate(orders_ready_total[5m]))"}]},
+    {"type": "timeseries", "title": "failed tasks rate", "gridPos": {"x": 16, "y": 0, "w": 8, "h": 8}, "targets": [{"expr": "sum(rate(tasks_failed_total[5m]))"}]},
+    {"type": "timeseries", "title": "tasks by station type", "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8}, "targets": [{"expr": "sum by (station_type) (rate(tasks_queued_total[5m]))", "legendFormat": "queued {{station_type}}"}, {"expr": "sum by (station_type) (rate(tasks_displayed_total[5m]))", "legendFormat": "displayed {{station_type}}"}, {"expr": "sum by (station_type) (rate(tasks_started_total[5m]))", "legendFormat": "started {{station_type}}"}, {"expr": "sum by (station_type) (rate(tasks_completed_total[5m]))", "legendFormat": "completed {{station_type}}"}]},
+    {"type": "timeseries", "title": "task actual duration p95", "gridPos": {"x": 12, "y": 8, "w": 6, "h": 8}, "targets": [{"expr": "histogram_quantile(0.95, sum by (station_type, le) (rate(task_actual_duration_seconds_bucket[5m])))"}]},
+    {"type": "timeseries", "title": "task delay p95", "gridPos": {"x": 18, "y": 8, "w": 6, "h": 8}, "targets": [{"expr": "histogram_quantile(0.95, sum by (station_type, le) (rate(task_delay_seconds_bucket[5m])))"}]}
+  ]
+}

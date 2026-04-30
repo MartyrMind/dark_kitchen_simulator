@@ -1,6 +1,6 @@
 """create fulfillment service tables
 
-Revision ID: 0001_create_fulfillment_service_tables
+Revision ID: fulf_0001
 Revises:
 Create Date: 2026-04-30
 """
@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from alembic import op
 import sqlalchemy as sa
 
-revision: str = "0001_create_fulfillment_service_tables"
+revision: str = "fulf_0001"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

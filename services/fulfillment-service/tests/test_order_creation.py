@@ -29,7 +29,10 @@ async def test_create_order_creates_items_tasks_and_dependencies(session):
     assert [task.attempts for task in tasks] == [1, 1, 1, 1]
     assert created.queued_tasks_count == 4
     assert len(publisher.published) == 4
-    assert len(event_writer.events) == 4
+    event_types = [event["event_type"] for event in event_writer.events]
+    assert event_types.count("OrderCreated") == 1
+    assert event_types.count("KitchenTasksCreated") == 1
+    assert event_types.count("TaskQueued") == 4
     assert len([task for task in tasks if task.depends_on_task_ids]) == 2
 
 

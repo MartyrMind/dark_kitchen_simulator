@@ -1,0 +1,15 @@
+{
+  "uid": "dark-kitchen-kds",
+  "title": "KDS / Kitchen",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {"type": "timeseries", "title": "KDS visible backlog by station", "gridPos": {"x": 0, "y": 0, "w": 8, "h": 8}, "targets": [{"expr": "kds_visible_backlog_size"}]},
+    {"type": "timeseries", "title": "claim attempts", "gridPos": {"x": 8, "y": 0, "w": 8, "h": 8}, "targets": [{"expr": "sum by (station_id) (rate(kds_claim_attempts_total[5m]))"}]},
+    {"type": "timeseries", "title": "claim success", "gridPos": {"x": 16, "y": 0, "w": 8, "h": 8}, "targets": [{"expr": "sum by (station_id) (rate(kds_claim_success_total[5m]))"}]},
+    {"type": "timeseries", "title": "claim conflicts by reason", "gridPos": {"x": 0, "y": 8, "w": 8, "h": 8}, "targets": [{"expr": "sum by (reason) (rate(kds_claim_conflicts_total[5m]))"}]},
+    {"type": "timeseries", "title": "station busy slots", "gridPos": {"x": 8, "y": 8, "w": 8, "h": 8}, "targets": [{"expr": "station_busy_slots"}]},
+    {"type": "timeseries", "title": "station capacity and utilization", "gridPos": {"x": 16, "y": 8, "w": 8, "h": 8}, "targets": [{"expr": "station_capacity"}, {"expr": "station_utilization_ratio"}]}
+  ]
+}

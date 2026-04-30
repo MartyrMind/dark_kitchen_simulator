@@ -1,0 +1,15 @@
+{
+  "uid": "dark-kitchen-simulator",
+  "title": "Station Simulator",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {"type": "stat", "title": "simulator active workers", "gridPos": {"x": 0, "y": 0, "w": 6, "h": 8}, "targets": [{"expr": "simulator_active_workers"}]},
+    {"type": "timeseries", "title": "simulator claim attempts", "gridPos": {"x": 6, "y": 0, "w": 10, "h": 8}, "targets": [{"expr": "sum by (station_id, worker_id) (rate(simulator_claim_attempts_total[5m]))"}]},
+    {"type": "timeseries", "title": "simulator claim conflicts", "gridPos": {"x": 16, "y": 0, "w": 8, "h": 8}, "targets": [{"expr": "sum by (reason) (rate(simulator_claim_conflicts_total[5m]))"}]},
+    {"type": "timeseries", "title": "simulator completed tasks", "gridPos": {"x": 0, "y": 8, "w": 8, "h": 8}, "targets": [{"expr": "sum by (station_id) (rate(simulator_completed_tasks_total[5m]))"}]},
+    {"type": "timeseries", "title": "simulator task duration p95", "gridPos": {"x": 8, "y": 8, "w": 8, "h": 8}, "targets": [{"expr": "histogram_quantile(0.95, sum by (station_id, le) (rate(simulator_task_duration_seconds_bucket[5m])))"}]},
+    {"type": "timeseries", "title": "simulator poll errors", "gridPos": {"x": 16, "y": 8, "w": 8, "h": 8}, "targets": [{"expr": "sum by (reason) (rate(simulator_poll_errors_total[5m]))"}]}
+  ]
+}

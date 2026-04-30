@@ -1,7 +1,7 @@
 """add task queue publish fields
 
-Revision ID: 0002_add_task_queue_publish_fields
-Revises: 0001_create_fulfillment_service_tables
+Revision ID: fulf_0002
+Revises: fulf_0001
 Create Date: 2026-04-30
 """
 
@@ -10,8 +10,8 @@ from collections.abc import Sequence
 from alembic import op
 import sqlalchemy as sa
 
-revision: str = "0002_add_task_queue_publish_fields"
-down_revision: str | None = "0001_create_fulfillment_service_tables"
+revision: str = "fulf_0002"
+down_revision: str | None = "fulf_0001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

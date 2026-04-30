@@ -4,6 +4,17 @@ Menu Service owns menu items, kitchen-specific menu availability, and ordered re
 
 It does not create orders, kitchen tasks, KDS tasks, Redis messages, or Mongo audit events.
 
+## Observability
+
+`GET /metrics` exposes generic HTTP metrics:
+
+```text
+http_requests_total
+http_request_duration_seconds
+```
+
+Menu Service does not write MongoDB business events in this MVP.
+
 ## Local Setup
 
 ```bash

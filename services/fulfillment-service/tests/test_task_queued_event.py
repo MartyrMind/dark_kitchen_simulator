@@ -16,14 +16,14 @@ async def test_task_queued_event_is_written(session):
 
     await service.create_order(OrderCreate(kitchen_id=KITCHEN_ID, items=[{"menu_item_id": BURGER_ID, "quantity": 1}]))
 
-    assert len(event_writer.events) == 2
-    assert event_writer.events[0]["event_type"] == "TaskQueued"
-    assert event_writer.events[0]["task_id"]
-    assert event_writer.events[0]["order_id"]
-    assert event_writer.events[0]["kitchen_id"] == str(KITCHEN_ID)
-    assert event_writer.events[0]["station_type"] == "grill"
-    assert event_writer.events[0]["payload"]["stream"]
-    assert event_writer.events[0]["payload"]["redis_message_id"]
+    task_events = [event for event in event_writer.events if event["event_type"] == "TaskQueued"]
+    assert len(task_events) == 2
+    assert task_events[0]["task_id"]
+    assert task_events[0]["order_id"]
+    assert task_events[0]["kitchen_id"] == str(KITCHEN_ID)
+    assert task_events[0]["station_type"] == "grill"
+    assert task_events[0]["payload"]["stream"]
+    assert task_events[0]["payload"]["redis_message_id"]
 
 
 async def test_mongo_event_failure_does_not_fail_order_creation(session):

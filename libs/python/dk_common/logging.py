@@ -44,7 +44,16 @@ else:
             "request_id": record["extra"].get("request_id"),
         }
 
-        for key in ("order_id", "task_id", "station_id", "event"):
+        for key in (
+            "order_id",
+            "task_id",
+            "station_id",
+            "worker_id",
+            "kds_task_id",
+            "operation",
+            "event",
+            "error",
+        ):
             if key in record["extra"]:
                 payload[key] = record["extra"][key]
 

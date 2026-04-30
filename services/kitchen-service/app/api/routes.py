@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,15 +25,29 @@ from app.schemas import (
     StationRead,
     StationStatusUpdate,
 )
-from app.services import KdsService, KitchenService
+from app.services import KdsDomainError, KdsService, KitchenService, NotFoundError
 from dk_common.correlation import get_correlation_id
 from dk_common.health import build_health_response
 
 router = APIRouter()
 
 
+def parse_uuid(value: str, code: str = "not_found") -> UUID:
+    try:
+        return UUID(value)
+    except ValueError as exc:
+        raise NotFoundError(code) from exc
+
+
+def parse_kds_station_uuid(value: str) -> UUID:
+    try:
+        return UUID(value)
+    except ValueError as exc:
+        raise KdsDomainError("station_not_found", "Station not found", status_code=404) from exc
+
+
 def get_kitchen_service(session: Annotated[AsyncSession, Depends(get_session)]) -> KitchenService:
-    return KitchenService(session)
+    return KitchenService(session, get_event_writer())
 
 
 def get_kds_service(
@@ -113,10 +128,10 @@ async def list_kitchens(service: Annotated[KitchenService, Depends(get_kitchen_s
 
 @router.get("/kitchens/{kitchen_id}", response_model=KitchenRead)
 async def get_kitchen(
-    kitchen_id: int,
+    kitchen_id: str,
     service: Annotated[KitchenService, Depends(get_kitchen_service)],
 ):
-    return await service.get_kitchen(kitchen_id)
+    return await service.get_kitchen(parse_uuid(kitchen_id, "kitchen_not_found"))
 
 
 @router.post(
@@ -125,47 +140,47 @@ async def get_kitchen(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_station(
-    kitchen_id: int,
+    kitchen_id: str,
     payload: StationCreate,
     service: Annotated[KitchenService, Depends(get_kitchen_service)],
 ):
-    return await service.create_station(kitchen_id, payload)
+    return await service.create_station(parse_uuid(kitchen_id, "kitchen_not_found"), payload)
 
 
 @router.get("/kitchens/{kitchen_id}/stations", response_model=list[StationRead])
 async def list_stations(
-    kitchen_id: int,
+    kitchen_id: str,
     service: Annotated[KitchenService, Depends(get_kitchen_service)],
     station_type: StationType | None = Query(default=None),
 ):
-    return await service.list_stations(kitchen_id, station_type)
+    return await service.list_stations(parse_uuid(kitchen_id, "kitchen_not_found"), station_type)
 
 
 @router.patch("/stations/{station_id}/capacity", response_model=StationRead)
 async def update_station_capacity(
-    station_id: int,
+    station_id: str,
     payload: StationCapacityUpdate,
     service: Annotated[KitchenService, Depends(get_kitchen_service)],
 ):
-    return await service.update_station_capacity(station_id, payload.capacity)
+    return await service.update_station_capacity(parse_uuid(station_id, "station_not_found"), payload.capacity)
 
 
 @router.patch("/stations/{station_id}/status", response_model=StationRead)
 async def update_station_status(
-    station_id: int,
+    station_id: str,
     payload: StationStatusUpdate,
     service: Annotated[KitchenService, Depends(get_kitchen_service)],
 ):
-    return await service.update_station_status(station_id, payload.status)
+    return await service.update_station_status(parse_uuid(station_id, "station_not_found"), payload.status)
 
 
 @router.get("/internal/kds/dispatch-candidates", response_model=list[DispatchCandidateResponse])
 async def dispatch_candidates(
-    kitchen_id: int,
+    kitchen_id: str,
     station_type: StationType,
     service: Annotated[KdsService, Depends(get_kds_service)],
 ):
-    return await service.dispatch_candidates(kitchen_id, station_type)
+    return await service.dispatch_candidates(parse_uuid(kitchen_id, "kitchen_not_found"), station_type)
 
 
 @router.post(
@@ -174,12 +189,12 @@ async def dispatch_candidates(
     status_code=status.HTTP_201_CREATED,
 )
 async def deliver_kds_task(
-    station_id: int,
+    station_id: str,
     payload: KdsTaskDeliveryRequest,
     response: Response,
     service: Annotated[KdsService, Depends(get_kds_service)],
 ):
-    task, created = await service.deliver_task(station_id, payload, get_correlation_id())
+    task, created = await service.deliver_task(parse_kds_station_uuid(station_id), payload, get_correlation_id())
     if not created:
         response.status_code = status.HTTP_200_OK
     return kds_task_delivery_response(task)
@@ -187,33 +202,33 @@ async def deliver_kds_task(
 
 @router.get("/kds/stations/{station_id}/tasks", response_model=list[KdsStationTaskResponse])
 async def list_kds_station_tasks(
-    station_id: int,
+    station_id: str,
     service: Annotated[KdsService, Depends(get_kds_service)],
     task_status: KdsTaskStatus = Query(default=KdsTaskStatus.displayed, alias="status"),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ):
-    tasks = await service.list_station_tasks(station_id, task_status, limit, offset)
+    tasks = await service.list_station_tasks(parse_kds_station_uuid(station_id), task_status, limit, offset)
     return [kds_station_task_response(task) for task in tasks]
 
 
 @router.post("/kds/stations/{station_id}/tasks/{task_id}/claim", response_model=KdsTaskClaimResponse)
 async def claim_kds_task(
-    station_id: int,
+    station_id: str,
     task_id: str,
     payload: KdsTaskClaimRequest,
     service: Annotated[KdsService, Depends(get_kds_service)],
 ):
-    task = await service.claim_task(station_id, task_id, payload, get_correlation_id())
+    task = await service.claim_task(parse_kds_station_uuid(station_id), task_id, payload, get_correlation_id())
     return kds_task_claim_response(task)
 
 
 @router.post("/kds/stations/{station_id}/tasks/{task_id}/complete", response_model=KdsTaskCompleteResponse)
 async def complete_kds_task(
-    station_id: int,
+    station_id: str,
     task_id: str,
     payload: KdsTaskCompleteRequest,
     service: Annotated[KdsService, Depends(get_kds_service)],
 ):
-    task = await service.complete_task(station_id, task_id, payload, get_correlation_id())
+    task = await service.complete_task(parse_kds_station_uuid(station_id), task_id, payload, get_correlation_id())
     return kds_task_complete_response(task)

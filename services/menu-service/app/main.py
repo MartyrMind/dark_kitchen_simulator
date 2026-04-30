@@ -8,6 +8,7 @@ from app.config import settings
 from app.errors import install_error_handlers
 from dk_common.correlation import CorrelationIdMiddleware
 from dk_common.logging import configure_logging
+from dk_common.metrics import setup_metrics
 
 
 def create_app() -> FastAPI:
@@ -21,6 +22,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Menu Service", version=settings.version)
     app.add_middleware(CorrelationIdMiddleware)
     app.include_router(router)
+    setup_metrics(app, service_name=settings.service_name)
     install_error_handlers(app)
     return app
 

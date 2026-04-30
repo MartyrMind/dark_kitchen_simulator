@@ -1,0 +1,15 @@
+{
+  "uid": "dark-kitchen-scheduler-worker",
+  "title": "Scheduler Worker",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {"type": "timeseries", "title": "dispatch attempts", "gridPos": {"x": 0, "y": 0, "w": 8, "h": 8}, "targets": [{"expr": "sum by (station_type) (rate(dispatch_attempts_total[5m]))"}]},
+    {"type": "timeseries", "title": "dispatch success", "gridPos": {"x": 8, "y": 0, "w": 8, "h": 8}, "targets": [{"expr": "sum by (station_type, station_id) (rate(dispatch_success_total[5m]))"}]},
+    {"type": "timeseries", "title": "dispatch failures by reason", "gridPos": {"x": 16, "y": 0, "w": 8, "h": 8}, "targets": [{"expr": "sum by (reason) (rate(dispatch_failed_total[5m]))"}]},
+    {"type": "timeseries", "title": "dispatch retries by reason", "gridPos": {"x": 0, "y": 8, "w": 8, "h": 8}, "targets": [{"expr": "sum by (reason) (rate(dispatch_retries_total[5m]))"}]},
+    {"type": "timeseries", "title": "dispatch latency p95", "gridPos": {"x": 8, "y": 8, "w": 8, "h": 8}, "targets": [{"expr": "histogram_quantile(0.95, sum by (station_type, le) (rate(dispatch_latency_seconds_bucket[5m])))"}]},
+    {"type": "timeseries", "title": "Redis pending and DLQ", "gridPos": {"x": 16, "y": 8, "w": 8, "h": 8}, "targets": [{"expr": "redis_pending_messages"}, {"expr": "sum by (station_type) (rate(redis_dlq_messages_total[5m]))"}]}
+  ]
+}

@@ -49,8 +49,78 @@ class TaskQueuedEventWriter:
         }
         try:
             await self.mongo_client[self.database_name]["task_events"].insert_one(event)
-        except Exception:
+        except Exception as exc:
             logger.exception("mongo_event_write_failed", extra={"task_id": str(task.id)})
+            await self.write_audit_event(
+                "MongoEventWriteFailed",
+                task_id=str(task.id),
+                order_id=str(order.id),
+                kitchen_id=str(order.kitchen_id),
+                payload={"collection": "task_events", "event_type": "TaskQueued", "error": str(exc)},
+            )
+
+    async def write_order_created(self, order: Order, tasks_count: int) -> None:
+        await self._write_order_event(
+            "OrderCreated",
+            order,
+            {"tasks_count": tasks_count, "status": order.status},
+        )
+
+    async def write_kitchen_tasks_created(self, order: Order, tasks_count: int) -> None:
+        await self._write_order_event(
+            "KitchenTasksCreated",
+            order,
+            {"tasks_count": tasks_count},
+        )
+
+    async def write_audit_event(
+        self,
+        event_type: str,
+        *,
+        payload: dict,
+        order_id: str | None = None,
+        task_id: str | None = None,
+        kitchen_id: str | None = None,
+    ) -> None:
+        if not self.enabled or self.mongo_client is None:
+            return
+        event = {
+            "event_type": event_type,
+            "order_id": order_id,
+            "task_id": task_id,
+            "kitchen_id": kitchen_id,
+            "payload": payload,
+            "correlation_id": get_correlation_id(),
+            "service": settings.service_name,
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        try:
+            await self.mongo_client[self.database_name]["app_audit_events"].insert_one(event)
+        except Exception:
+            logger.exception("mongo_audit_event_write_failed")
+
+    async def _write_order_event(self, event_type: str, order: Order, payload: dict) -> None:
+        if not self.enabled or self.mongo_client is None:
+            return
+        event = {
+            "event_type": event_type,
+            "order_id": str(order.id),
+            "kitchen_id": str(order.kitchen_id),
+            "payload": payload,
+            "correlation_id": get_correlation_id(),
+            "service": settings.service_name,
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        try:
+            await self.mongo_client[self.database_name]["order_events"].insert_one(event)
+        except Exception as exc:
+            logger.exception("mongo_event_write_failed", extra={"order_id": str(order.id)})
+            await self.write_audit_event(
+                "MongoEventWriteFailed",
+                order_id=str(order.id),
+                kitchen_id=str(order.kitchen_id),
+                payload={"collection": "order_events", "event_type": event_type, "error": str(exc)},
+            )
 
 
 class TaskTransitionEventWriter:
@@ -109,6 +179,11 @@ class TaskTransitionEventWriter:
                 "attempts": task.attempts,
             },
         )
+        await self.write_audit_event(
+            "DispatchFailed",
+            task=task,
+            payload={"reason": reason, "dispatcher_id": dispatcher_id, "attempts": task.attempts},
+        )
 
     async def write_order_ready_for_pickup(self, order: Order, completed_tasks_count: int) -> None:
         if not self.enabled or self.mongo_client is None:
@@ -124,8 +199,40 @@ class TaskTransitionEventWriter:
         }
         try:
             await self.mongo_client[self.database_name]["order_events"].insert_one(event)
-        except Exception:
+        except Exception as exc:
             logger.exception("mongo_event_write_failed", extra={"order_id": str(order.id)})
+            await self.write_audit_event(
+                "MongoEventWriteFailed",
+                task=None,
+                payload={
+                    "collection": "order_events",
+                    "event_type": "OrderReadyForPickup",
+                    "error": str(exc),
+                    "order_id": str(order.id),
+                    "kitchen_id": str(order.kitchen_id),
+                },
+            )
+
+    async def write_audit_event(self, event_type: str, task: KitchenTask | None, payload: dict) -> None:
+        if not self.enabled or self.mongo_client is None:
+            return
+        event = {
+            "event_type": event_type,
+            "task_id": str(task.id) if task is not None else payload.get("task_id"),
+            "order_id": str(task.order_id) if task is not None else payload.get("order_id"),
+            "kitchen_id": str(task.order.kitchen_id) if task is not None else payload.get("kitchen_id"),
+            "station_type": task.station_type if task is not None else payload.get("station_type"),
+            "station_id": str(task.station_id) if task is not None and task.station_id else payload.get("station_id"),
+            "kds_task_id": str(task.kds_task_id) if task is not None and task.kds_task_id else payload.get("kds_task_id"),
+            "payload": payload,
+            "correlation_id": get_correlation_id(),
+            "service": settings.service_name,
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        try:
+            await self.mongo_client[self.database_name]["app_audit_events"].insert_one(event)
+        except Exception:
+            logger.exception("mongo_audit_event_write_failed", extra={"task_id": event["task_id"]})
 
     async def _write_task_event(
         self,
@@ -151,5 +258,10 @@ class TaskTransitionEventWriter:
         }
         try:
             await self.mongo_client[self.database_name]["task_events"].insert_one(event)
-        except Exception:
+        except Exception as exc:
             logger.exception("mongo_event_write_failed", extra={"task_id": str(task.id)})
+            await self.write_audit_event(
+                "MongoEventWriteFailed",
+                task,
+                {"collection": "task_events", "event_type": event_type, "error": str(exc)},
+            )

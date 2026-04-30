@@ -15,6 +15,7 @@ from app.domain.errors import ConflictError, NotFoundError
 from app.domain.statuses import OrderStatus, TaskStatus
 from app.domain.transitions import can_transition
 from app.events.task_events import TaskQueuedEventWriter, TaskTransitionEventWriter
+from app.metrics import business_metrics
 from app.models import KitchenTask, Order
 from app.redis.streams import RedisTaskPublisher
 from app.repositories import KitchenTaskRepository, OrderRepository
@@ -132,6 +133,17 @@ class OrderCreationService:
             await self.tasks.add_tasks(built.tasks, built.dependencies)
             await self.session.commit()
             await self.session.refresh(order, attribute_names=["items"])
+            business_metrics.orders_created_total.labels(business_metrics.kitchen_label(order.kitchen_id)).inc()
+            await self._safe_optional_creation_event_write(
+                "write_order_created",
+                order,
+                len(built.tasks),
+            )
+            await self._safe_optional_creation_event_write(
+                "write_kitchen_tasks_created",
+                order,
+                len(built.tasks),
+            )
             queued_tasks_count = await self._publish_and_queue_tasks(order, built.tasks, menu_item_names)
             return OrderCreatedRead(
                 id=order.id,
@@ -174,12 +186,34 @@ class OrderCreationService:
             raise
 
         for task, stream, redis_message_id in published:
+            business_metrics.tasks_queued_total.labels(
+                business_metrics.kitchen_label(order.kitchen_id),
+                business_metrics.station_type_label(task.station_type),
+            ).inc()
             try:
                 await self.task_event_writer.write_task_queued(task, order, stream, redis_message_id)
             except Exception:
                 logger.exception("mongo_event_write_failed", extra={"task_id": str(task.id)})
+                await self._safe_optional_creation_event_write(
+                    "write_audit_event",
+                    "MongoEventWriteFailed",
+                    task_id=str(task.id),
+                    order_id=str(order.id),
+                    kitchen_id=str(order.kitchen_id),
+                    payload={"collection": "task_events", "event_type": "TaskQueued"},
+                )
 
         return len(published)
+
+    async def _safe_optional_creation_event_write(self, method_name: str, *args, **kwargs) -> None:
+        log_extra = {key: value for key, value in kwargs.items() if key in {"task_id", "order_id"}}
+        method = getattr(self.task_event_writer, method_name, None)
+        if method is None:
+            return
+        try:
+            await method(*args, **kwargs)
+        except Exception:
+            logger.exception("mongo_event_write_failed", extra=log_extra)
 
     async def get_order(self, order_id: UUID) -> Order:
         order = await self.orders.get_order(order_id)
@@ -266,6 +300,10 @@ class TaskTransitionService:
         task.displayed_at = payload.displayed_at
         task.status = TaskStatus.displayed
         await self.session.commit()
+        business_metrics.tasks_displayed_total.labels(
+            business_metrics.kitchen_label(task.order.kitchen_id),
+            business_metrics.station_type_label(task.station_type),
+        ).inc()
         await self._safe_event_write(self.event_writer.write_task_displayed(task, payload.dispatcher_id))
         return self._mark_displayed_response(task)
 
@@ -282,6 +320,10 @@ class TaskTransitionService:
         task.status = TaskStatus.in_progress
         task.order.status = OrderStatus.cooking
         await self.session.commit()
+        business_metrics.tasks_started_total.labels(
+            business_metrics.kitchen_label(task.order.kitchen_id),
+            business_metrics.station_type_label(task.station_type),
+        ).inc()
         await self._safe_event_write(self.event_writer.write_task_started(task, payload.station_worker_id))
         return self._start_response(task)
 
@@ -313,6 +355,15 @@ class TaskTransitionService:
             completed_count = await self.tasks.completed_order_tasks_count(task.order_id)
 
         await self.session.commit()
+        labels = (
+            business_metrics.kitchen_label(task.order.kitchen_id),
+            business_metrics.station_type_label(task.station_type),
+        )
+        business_metrics.tasks_completed_total.labels(*labels).inc()
+        business_metrics.task_actual_duration_seconds.labels(*labels).observe(task.actual_duration_seconds or 0)
+        business_metrics.task_delay_seconds.labels(*labels).observe(task.delay_seconds or 0)
+        if order_ready:
+            business_metrics.orders_ready_total.labels(business_metrics.kitchen_label(task.order.kitchen_id)).inc()
         await self._safe_event_write(self.event_writer.write_task_completed(task, payload.station_worker_id))
         if order_ready:
             await self._safe_event_write(self.event_writer.write_order_ready_for_pickup(task.order, completed_count))
@@ -327,6 +378,10 @@ class TaskTransitionService:
             task.attempts = payload.attempts
         task.status = TaskStatus.failed
         await self.session.commit()
+        business_metrics.tasks_failed_total.labels(
+            business_metrics.kitchen_label(task.order.kitchen_id),
+            business_metrics.station_type_label(task.station_type),
+        ).inc()
         await self._safe_event_write(
             self.event_writer.write_task_dispatch_failed(task, payload.reason, payload.dispatcher_id)
         )

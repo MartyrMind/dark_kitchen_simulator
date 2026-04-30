@@ -1,6 +1,6 @@
 """create kitchens and stations
 
-Revision ID: 0001_create_kitchens_and_stations
+Revision ID: ksvc_0001
 Revises:
 Create Date: 2026-04-30
 """
@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from alembic import op
 import sqlalchemy as sa
 
-revision: str = "0001_create_kitchens_and_stations"
+revision: str = "ksvc_0001"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -19,7 +19,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.create_table(
         "kitchens",
-        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("name", sa.String(length=120), nullable=False),
         sa.Column("status", sa.String(length=24), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
@@ -29,8 +29,8 @@ def upgrade() -> None:
     )
     op.create_table(
         "stations",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("kitchen_id", sa.Integer(), nullable=False),
+        sa.Column("id", sa.Uuid(), nullable=False),
+        sa.Column("kitchen_id", sa.Uuid(), nullable=False),
         sa.Column("name", sa.String(length=120), nullable=False),
         sa.Column("station_type", sa.String(length=32), nullable=False),
         sa.Column("status", sa.String(length=24), nullable=False),

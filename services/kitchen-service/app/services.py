@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,6 +7,7 @@ from loguru import logger
 
 from app.clients import FulfillmentClient, FulfillmentClientError
 from app.events import MongoKdsEventWriter
+from app.metrics import business_metrics
 from app.models import KdsStationTask, KdsTaskStatus, Kitchen, Station, StationStatus, StationType
 from app.repositories import KdsRepository, KitchenRepository, StationRepository
 from app.schemas import (
@@ -35,10 +37,11 @@ class KdsDomainError(Exception):
 
 
 class KitchenService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, event_writer: MongoKdsEventWriter | None = None) -> None:
         self.session = session
         self.kitchens = KitchenRepository(session)
         self.stations = StationRepository(session)
+        self.event_writer = event_writer
 
     async def create_kitchen(self, payload: KitchenCreate) -> Kitchen:
         try:
@@ -52,17 +55,24 @@ class KitchenService:
     async def list_kitchens(self) -> list[Kitchen]:
         return await self.kitchens.list()
 
-    async def get_kitchen(self, kitchen_id: int) -> Kitchen:
+    async def get_kitchen(self, kitchen_id: UUID) -> Kitchen:
         kitchen = await self.kitchens.get(kitchen_id)
         if kitchen is None:
             raise NotFoundError("kitchen_not_found")
         return kitchen
 
-    async def create_station(self, kitchen_id: int, payload: StationCreate) -> Station:
+    async def create_station(self, kitchen_id: UUID, payload: StationCreate) -> Station:
         await self.get_kitchen(kitchen_id)
         try:
             station = await self.stations.create(kitchen_id, payload)
             await self.session.commit()
+            business_metrics.update_station_gauges(station, visible_backlog_size=0)
+            await self._write_station_event(
+                "StationCreated",
+                station,
+                None,
+                {"status": station.status, "capacity": station.capacity, "visible_backlog_limit": station.visible_backlog_limit},
+            )
             return station
         except IntegrityError as exc:
             await self.session.rollback()
@@ -70,31 +80,60 @@ class KitchenService:
 
     async def list_stations(
         self,
-        kitchen_id: int,
+        kitchen_id: UUID,
         station_type: StationType | None = None,
     ) -> list[Station]:
         await self.get_kitchen(kitchen_id)
         return await self.stations.list_by_kitchen(kitchen_id, station_type)
 
-    async def update_station_capacity(self, station_id: int, capacity: int) -> Station:
+    async def update_station_capacity(self, station_id: UUID, capacity: int) -> Station:
         station = await self._get_station(station_id)
         station.capacity = capacity
         await self.session.commit()
         await self.session.refresh(station)
+        business_metrics.update_station_gauges(station)
+        await self._write_station_event("StationCapacityChanged", station, None, {"capacity": station.capacity})
         return station
 
-    async def update_station_status(self, station_id: int, status: StationStatus) -> Station:
+    async def update_station_status(self, station_id: UUID, status: StationStatus) -> Station:
         station = await self._get_station(station_id)
         station.status = status
         await self.session.commit()
         await self.session.refresh(station)
+        business_metrics.update_station_gauges(station)
+        await self._write_station_event("StationStatusChanged", station, None, {"status": station.status})
         return station
 
-    async def _get_station(self, station_id: int) -> Station:
+    async def _get_station(self, station_id: UUID) -> Station:
         station = await self.stations.get(station_id)
         if station is None:
             raise NotFoundError("station_not_found")
         return station
+
+    async def _write_station_event(
+        self,
+        event_type: str,
+        station: Station,
+        correlation_id: str | None,
+        payload: dict,
+    ) -> None:
+        if self.event_writer is None:
+            return
+        try:
+            await self.event_writer.write_station_event(
+                event_type,
+                kitchen_id=station.kitchen_id,
+                station_id=station.id,
+                station_type=station.station_type,
+                correlation_id=correlation_id,
+                payload=payload,
+            )
+        except Exception as exc:
+            logger.bind(event="station_event_failed", station_id=station.id).error(
+                "failed to write {} event: {}",
+                event_type,
+                exc,
+            )
 
 
 class KdsService:
@@ -112,7 +151,7 @@ class KdsService:
 
     async def dispatch_candidates(
         self,
-        kitchen_id: int,
+        kitchen_id: UUID,
         station_type: StationType,
     ) -> list[DispatchCandidateResponse]:
         rows = await self.kds.dispatch_candidates(kitchen_id, station_type)
@@ -132,7 +171,7 @@ class KdsService:
 
     async def deliver_task(
         self,
-        station_id: int,
+        station_id: UUID,
         payload: KdsTaskDeliveryRequest,
         correlation_id: str | None,
     ) -> tuple[KdsStationTask, bool]:
@@ -172,11 +211,13 @@ class KdsService:
                 "failed to write KdsTaskDisplayed event: {}",
                 exc,
             )
+        backlog_after = await self.kds.visible_backlog_size(station_id)
+        business_metrics.update_station_gauges(station, visible_backlog_size=backlog_after)
         return task, True
 
     async def list_station_tasks(
         self,
-        station_id: int,
+        station_id: UUID,
         task_status: KdsTaskStatus,
         limit: int,
         offset: int,
@@ -188,7 +229,7 @@ class KdsService:
 
     async def claim_task(
         self,
-        station_id: int,
+        station_id: UUID,
         task_id: str,
         payload: KdsTaskClaimRequest,
         correlation_id: str | None,
@@ -201,9 +242,20 @@ class KdsService:
         task = await self.kds.get_by_task_id_for_update(task_id)
         if task is None:
             raise KdsDomainError("kds_task_not_found", "KDS task not found", status_code=404)
+        business_metrics.kds_claim_attempts_total.labels(
+            str(station.kitchen_id),
+            str(station.id),
+            str(station.station_type),
+        ).inc()
         try:
             self._validate_claim(station, task)
         except KdsDomainError as exc:
+            business_metrics.kds_claim_conflicts_total.labels(
+                str(station.kitchen_id),
+                str(station.id),
+                str(station.station_type),
+                exc.code,
+            ).inc()
             await self._write_kds_event(
                 "KdsTaskClaimRejected",
                 task,
@@ -224,12 +276,26 @@ class KdsService:
         try:
             await self.fulfillment_client.start_task(
                 task.task_id,
-                station_id=station.id,
-                kds_task_id=task.id,
+                station_id=str(station.id),
+                kds_task_id=str(task.id),
                 station_worker_id=payload.station_worker_id,
                 started_at=claimed_at,
             )
         except FulfillmentClientError as exc:
+            await self.event_writer.write_audit_event(
+                "ExternalServiceUnavailable" if exc.code == "fulfillment_service_unavailable" else "FulfillmentCallbackFailed",
+                correlation_id=correlation_id,
+                task_id=task.task_id,
+                order_id=task.order_id,
+                station_id=station.id,
+                station_type=station.station_type,
+                kds_task_id=task.id,
+                payload={
+                    "external_service": "fulfillment-service",
+                    "operation": "POST /internal/tasks/{task_id}/start",
+                    "error": str(exc.code),
+                },
+            )
             await self._compensate_claim(task.task_id, payload.station_worker_id, correlation_id, str(exc.code))
             status_code = 503 if exc.code == "fulfillment_service_unavailable" else 409
             message = (
@@ -239,6 +305,13 @@ class KdsService:
             )
             raise KdsDomainError(exc.code, message, status_code=status_code) from exc
 
+        business_metrics.kds_claim_success_total.labels(
+            str(station.kitchen_id),
+            str(station.id),
+            str(station.station_type),
+        ).inc()
+        backlog_after = await self.kds.visible_backlog_size(station_id)
+        business_metrics.update_station_gauges(station, visible_backlog_size=backlog_after)
         await self._write_kds_event(
             "KdsTaskClaimed",
             task,
@@ -256,7 +329,7 @@ class KdsService:
 
     async def complete_task(
         self,
-        station_id: int,
+        station_id: UUID,
         task_id: str,
         payload: KdsTaskCompleteRequest,
         correlation_id: str | None,
@@ -275,12 +348,26 @@ class KdsService:
         try:
             await self.fulfillment_client.complete_task(
                 task.task_id,
-                station_id=station.id,
-                kds_task_id=task.id,
+                station_id=str(station.id),
+                kds_task_id=str(task.id),
                 station_worker_id=payload.station_worker_id,
                 completed_at=completed_at,
             )
         except FulfillmentClientError as exc:
+            await self.event_writer.write_audit_event(
+                "ExternalServiceUnavailable" if exc.code == "fulfillment_service_unavailable" else "FulfillmentCallbackFailed",
+                correlation_id=correlation_id,
+                task_id=task.task_id,
+                order_id=task.order_id,
+                station_id=station.id,
+                station_type=station.station_type,
+                kds_task_id=task.id,
+                payload={
+                    "external_service": "fulfillment-service",
+                    "operation": "POST /internal/tasks/{task_id}/complete",
+                    "error": str(exc.code),
+                },
+            )
             status_code = 503 if exc.code == "fulfillment_service_unavailable" else 409
             message = (
                 "Fulfillment Service is unavailable"
@@ -301,6 +388,8 @@ class KdsService:
         await self.session.commit()
         await self.session.refresh(task)
         await self.session.refresh(station)
+        backlog_after = await self.kds.visible_backlog_size(station_id)
+        business_metrics.update_station_gauges(station, visible_backlog_size=backlog_after)
 
         await self._write_kds_event(
             "KdsTaskCompleted",
@@ -417,6 +506,7 @@ class KdsService:
                 event_type,
                 kitchen_id=station.kitchen_id,
                 station_id=station.id,
+                station_type=station.station_type,
                 correlation_id=correlation_id,
                 payload=payload,
             )

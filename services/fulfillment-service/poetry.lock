@@ -218,6 +218,7 @@ develop = true
 [package.dependencies]
 fastapi = ">=0.115.0,<1.0.0"
 loguru = ">=0.7.0,<1.0.0"
+prometheus-client = ">=0.20.0,<1.0.0"
 pydantic = ">=2.0.0,<3.0.0"
 pydantic-settings = ">=2.0.0,<3.0.0"
 starlette = ">=0.37.0,<1.0.0"
@@ -700,6 +701,23 @@ files = [
 [package.extras]
 dev = ["pre-commit", "tox"]
 testing = ["coverage", "pytest", "pytest-benchmark"]
+
+[[package]]
+name = "prometheus-client"
+version = "0.25.0"
+description = "Python client for the Prometheus monitoring system."
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "prometheus_client-0.25.0-py3-none-any.whl", hash = "sha256:d5aec89e349a6ec230805d0df882f3807f74fd6c1a2fa86864e3c2279059fed1"},
+    {file = "prometheus_client-0.25.0.tar.gz", hash = "sha256:5e373b75c31afb3c86f1a52fa1ad470c9aace18082d39ec0d2f918d11cc9ba28"},
+]
+
+[package.extras]
+aiohttp = ["aiohttp"]
+django = ["django"]
+twisted = ["twisted"]
 
 [[package]]
 name = "psycopg"
@@ -1760,4 +1778,4 @@ dev = ["black (>=19.3b0) ; python_version >= \"3.6\"", "pytest (>=4.6.2)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<4.0"
-content-hash = "17f58410ef8a5272ca8868cc77651c08788ccc7aa5144d8d99d5f73da3823aaa"
+content-hash = "27a4beced1a791c4d2e89fe7e3645151059d37d341d4fb4c51b9b23d2292267b"

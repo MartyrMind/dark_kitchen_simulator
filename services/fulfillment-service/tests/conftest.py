@@ -120,6 +120,35 @@ class FakeTaskEventWriter:
             }
         )
 
+    async def write_order_created(self, order, tasks_count):
+        if self.fail:
+            raise RuntimeError("mongo failed")
+        self.events.append(
+            {
+                "event_type": "OrderCreated",
+                "order_id": str(order.id),
+                "kitchen_id": str(order.kitchen_id),
+                "payload": {"tasks_count": tasks_count},
+            }
+        )
+
+    async def write_kitchen_tasks_created(self, order, tasks_count):
+        if self.fail:
+            raise RuntimeError("mongo failed")
+        self.events.append(
+            {
+                "event_type": "KitchenTasksCreated",
+                "order_id": str(order.id),
+                "kitchen_id": str(order.kitchen_id),
+                "payload": {"tasks_count": tasks_count},
+            }
+        )
+
+    async def write_audit_event(self, event_type, **payload):
+        if self.fail:
+            raise RuntimeError("mongo failed")
+        self.events.append({"event_type": event_type, "payload": payload})
+
 
 class FakeTaskTransitionEventWriter:
     def __init__(self, fail: bool = False) -> None:

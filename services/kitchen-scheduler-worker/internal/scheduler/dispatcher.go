@@ -53,14 +53,13 @@ type Dispatcher struct {
 
 func (d *Dispatcher) Handle(ctx context.Context, streamMsg redisstream.StreamMessage) error {
 	started := time.Now()
-	if d.Metrics != nil {
-		d.Metrics.DispatchAttempts.Inc()
-		defer d.Metrics.DispatchLatency.Observe(time.Since(started).Seconds())
-	}
-
 	msg, err := redisstream.ParseTaskMessage(streamMsg.Values)
 	if err != nil {
 		return d.invalid(ctx, streamMsg, err)
+	}
+	if d.Metrics != nil {
+		d.Metrics.DispatchAttempts.WithLabelValues(msg.KitchenID, msg.StationType).Inc()
+		defer d.Metrics.DispatchLatency.WithLabelValues(msg.KitchenID, msg.StationType).Observe(time.Since(started).Seconds())
 	}
 	correlationID := msg.CorrelationID
 	if correlationID == "" {
@@ -138,7 +137,7 @@ func (d *Dispatcher) Handle(ctx context.Context, streamMsg redisstream.StreamMes
 
 	logger.Info("task dispatched", "station_id", station.StationID, "kds_task_id", kdsTask.KdsTaskID)
 	if d.Metrics != nil {
-		d.Metrics.DispatchSuccess.Inc()
+		d.Metrics.DispatchSuccess.WithLabelValues(msg.KitchenID, msg.StationType, station.StationID).Inc()
 	}
 	return d.Broker.Ack(ctx, streamMsg.Stream, d.Group, streamMsg.ID)
 }
@@ -159,8 +158,8 @@ func (d *Dispatcher) invalid(ctx context.Context, streamMsg redisstream.StreamMe
 		return err
 	}
 	if d.Metrics != nil {
-		d.Metrics.RedisDLQMessages.Inc()
-		d.Metrics.DispatchFailed.WithLabelValues(ReasonInvalidMessage).Inc()
+		d.Metrics.RedisDLQMessages.WithLabelValues("unknown", "unknown").Inc()
+		d.Metrics.DispatchFailed.WithLabelValues("unknown", "unknown", ReasonInvalidMessage).Inc()
 	}
 	return d.Broker.Ack(ctx, streamMsg.Stream, d.Group, streamMsg.ID)
 }
@@ -173,8 +172,8 @@ func (d *Dispatcher) retryOrDLQ(ctx context.Context, streamMsg redisstream.Strea
 			return err
 		}
 		if d.Metrics != nil {
-			d.Metrics.RedisDLQMessages.Inc()
-			d.Metrics.DispatchFailed.WithLabelValues(reason).Inc()
+			d.Metrics.RedisDLQMessages.WithLabelValues(msg.KitchenID, msg.StationType).Inc()
+			d.Metrics.DispatchFailed.WithLabelValues(msg.KitchenID, msg.StationType, reason).Inc()
 		}
 		_ = d.Fulfillment.DispatchFailed(ctx, msg.TaskID, fulfillment.DispatchFailedRequest{
 			Reason:       reason,
@@ -205,7 +204,7 @@ func (d *Dispatcher) retryOrDLQ(ctx context.Context, streamMsg redisstream.Strea
 		return err
 	}
 	if d.Metrics != nil {
-		d.Metrics.DispatchRetries.WithLabelValues(reason).Inc()
+		d.Metrics.DispatchRetries.WithLabelValues(msg.KitchenID, msg.StationType, reason).Inc()
 	}
 	if d.Logger != nil {
 		d.Logger.Info("scheduled dispatch retry", "reason", reason, "next_attempt", nextAttempt, "delay_ms", delay.Milliseconds(), "error", errorString(cause))

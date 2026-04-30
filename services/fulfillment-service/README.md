@@ -119,6 +119,24 @@ Transition events are written to MongoDB after the PostgreSQL transaction commit
 
 MongoDB failures are logged and do not roll back task status transitions.
 
+## Observability
+
+`GET /metrics` exposes generic HTTP metrics plus fulfillment business metrics:
+
+```text
+orders_created_total
+orders_ready_total
+tasks_queued_total
+tasks_displayed_total
+tasks_started_total
+tasks_completed_total
+tasks_failed_total
+task_actual_duration_seconds
+task_delay_seconds
+```
+
+MongoDB events are written to `order_events`, `task_events`, and `app_audit_events` in `dark_kitchen_events`.
+
 ## Redis Inspection
 
 ```bash

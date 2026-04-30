@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +12,7 @@ class KitchenRepository:
         self.session = session
 
     async def create(self, payload: KitchenCreate) -> Kitchen:
-        kitchen = Kitchen(name=payload.name)
+        kitchen = Kitchen(id=payload.id, name=payload.name) if payload.id else Kitchen(name=payload.name)
         self.session.add(kitchen)
         await self.session.flush()
         await self.session.refresh(kitchen)
@@ -20,7 +22,7 @@ class KitchenRepository:
         result = await self.session.scalars(select(Kitchen).order_by(Kitchen.id))
         return list(result)
 
-    async def get(self, kitchen_id: int) -> Kitchen | None:
+    async def get(self, kitchen_id: UUID) -> Kitchen | None:
         return await self.session.get(Kitchen, kitchen_id)
 
 
@@ -28,15 +30,18 @@ class StationRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def create(self, kitchen_id: int, payload: StationCreate) -> Station:
-        station = Station(
-            kitchen_id=kitchen_id,
-            name=payload.name,
-            station_type=payload.station_type,
-            capacity=payload.capacity,
-            visible_backlog_limit=payload.visible_backlog_limit,
-            busy_slots=0,
-        )
+    async def create(self, kitchen_id: UUID, payload: StationCreate) -> Station:
+        values = {
+            "kitchen_id": kitchen_id,
+            "name": payload.name,
+            "station_type": payload.station_type,
+            "capacity": payload.capacity,
+            "visible_backlog_limit": payload.visible_backlog_limit,
+            "busy_slots": 0,
+        }
+        if payload.id is not None:
+            values["id"] = payload.id
+        station = Station(**values)
         self.session.add(station)
         await self.session.flush()
         await self.session.refresh(station)
@@ -44,7 +49,7 @@ class StationRepository:
 
     async def list_by_kitchen(
         self,
-        kitchen_id: int,
+        kitchen_id: UUID,
         station_type: StationType | None = None,
     ) -> list[Station]:
         statement = select(Station).where(Station.kitchen_id == kitchen_id)
@@ -53,10 +58,10 @@ class StationRepository:
         result = await self.session.scalars(statement.order_by(Station.id))
         return list(result)
 
-    async def get(self, station_id: int) -> Station | None:
+    async def get(self, station_id: UUID) -> Station | None:
         return await self.session.get(Station, station_id)
 
-    async def get_for_update(self, station_id: int) -> Station | None:
+    async def get_for_update(self, station_id: UUID) -> Station | None:
         statement = select(Station).where(Station.id == station_id).with_for_update()
         return await self.session.scalar(statement)
 
@@ -65,7 +70,7 @@ class KdsRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def visible_backlog_size(self, station_id: int) -> int:
+    async def visible_backlog_size(self, station_id: UUID) -> int:
         statement = select(func.count(KdsStationTask.id)).where(
             KdsStationTask.station_id == station_id,
             KdsStationTask.status == KdsTaskStatus.displayed,
@@ -74,7 +79,7 @@ class KdsRepository:
 
     async def dispatch_candidates(
         self,
-        kitchen_id: int,
+        kitchen_id: UUID,
         station_type: StationType,
     ) -> list[tuple[Station, int]]:
         backlog = (
@@ -102,7 +107,7 @@ class KdsRepository:
 
     async def create_task(
         self,
-        station_id: int,
+        station_id: UUID,
         payload: KdsTaskDeliveryRequest,
     ) -> KdsStationTask:
         task = KdsStationTask(
@@ -138,7 +143,7 @@ class KdsRepository:
 
     async def list_station_tasks(
         self,
-        station_id: int,
+        station_id: UUID,
         task_status: KdsTaskStatus,
         limit: int,
         offset: int,
