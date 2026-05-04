@@ -347,6 +347,42 @@ kubectl apply -k deploy/k8s/base/hpa
 kubectl -n dark-kitchen get hpa
 ```
 
+### Скриншоты HPA
+
+Список созданных HPA:
+
+![kubectl get hpa](./hpa_get_hpa.png)
+
+Описание HPA для `fulfillment-service`:
+
+![Описание HPA](./hpa_reference.png)
+
+Запуск нагрузочного теста для проверки HPA:
+
+![Запуск load-test-hpa.sh](./run_test_hpa.png)
+
+Рост CPU utilization во время нагрузки:
+
+![Рост CPU и HPA](./hpa_cpu_increasing.png)
+
+### Скриншоты Linkerd
+
+Статус Linkerd control plane и Linkerd Viz:
+
+![Linkerd и Linkerd Viz запущены](./linkerd_ok_statuses.png)
+
+Проверка sidecar-контейнеров в pod'ах приложений:
+
+![Проверка sidecar Linkerd](./linkerd_check_sidecar.png)
+
+Статистика трафика через Linkerd:
+
+![Статистика трафика Linkerd](./linkerd_traffic_example.png)
+
+Dashboard Linkerd Viz:
+
+![Linkerd dashboard](./linkerd_dashboard.png)
+
 Манифесты из `deploy/k8s/base/observability` не нужно применять в обычный Minikube-кластер, если в нем не установлены CRD от Prometheus Operator для ресурса `ServiceMonitor`.
 
 ## Очистка стенда
