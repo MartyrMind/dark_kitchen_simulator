@@ -292,37 +292,29 @@ kubectl -n dark-kitchen logs deploy/kitchen-scheduler-worker --tail=100
 kubectl -n dark-kitchen logs deploy/station-simulator-service --tail=100
 ```
 
-## Места для скриншотов
-
-Скриншоты можно положить в папку:
-
-```text
-practicies/practice_3/k8s/screenshots
-```
+## Скриншоты
 
 ### kubectl get pods,svc,ingress
 
-Файл скриншота:
+Список Pod:
 
-```text
-practicies/practice_3/k8s/screenshots/get-pods-svc-ingress.png
-```
+![kubectl get pods](./kubectl_get_pods.png)
+
+Список Service:
+
+![kubectl get svc](./kubectl_get_svc.png)
+
+Список Ingress:
+
+![kubectl get ingress](./kubectl_get_ingress.png)
 
 ### curl через Ingress
 
-Файл скриншота:
-
-```text
-practicies/practice_3/k8s/screenshots/curl-ingress.png
-```
+![curl через Ingress](./curl_requests.png)
 
 ### Логи пода
 
-Файл скриншота:
-
-```text
-practicies/practice_3/k8s/screenshots/pod-logs.png
-```
+![Логи пода](./kubectl_logs.png)
 
 ## Дополнительные Kubernetes-возможности
 
