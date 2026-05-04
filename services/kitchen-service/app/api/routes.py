@@ -46,8 +46,11 @@ def parse_kds_station_uuid(value: str) -> UUID:
         raise KdsDomainError("station_not_found", "Station not found", status_code=404) from exc
 
 
-def get_kitchen_service(session: Annotated[AsyncSession, Depends(get_session)]) -> KitchenService:
-    return KitchenService(session, get_event_writer())
+def get_kitchen_service(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    event_writer: Annotated[MongoKdsEventWriter, Depends(get_event_writer)],
+) -> KitchenService:
+    return KitchenService(session, event_writer)
 
 
 def get_kds_service(

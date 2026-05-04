@@ -1,8 +1,5 @@
 from uuid import uuid4
 
-from app import events
-
-
 async def _create_station(client, *, station_type="grill", visible_backlog_limit=4, status=None, capacity=2):
     kitchen = await client.post("/kitchens", json={"name": f"Kitchen {uuid4()}"})
     assert kitchen.status_code == 201
@@ -170,17 +167,8 @@ async def test_kds_delivery_idempotency(client):
     assert duplicate.json()["error"] == "kds_task_already_exists"
 
 
-async def test_kds_event_is_written_for_new_delivery(monkeypatch, client):
-    class FakeEventWriter:
-        def __init__(self):
-            self.events = []
-
-        async def write_task_displayed(self, task, correlation_id):
-            self.events.append((task, correlation_id))
-
-    fake = FakeEventWriter()
-    monkeypatch.setattr(events, "event_writer", fake)
-
+async def test_kds_event_is_written_for_new_delivery(client):
+    fake = client.event_writer
     kitchen_id, station_id = await _create_station(client)
     response = await client.post(
         f"/internal/kds/stations/{station_id}/tasks",
@@ -212,13 +200,8 @@ async def test_kds_event_is_written_for_new_delivery(monkeypatch, client):
     assert len(fake.events) == 1
 
 
-async def test_kds_event_failure_does_not_fail_delivery(monkeypatch, client):
-    class FailingEventWriter:
-        async def write_task_displayed(self, task, correlation_id):
-            raise RuntimeError("mongo down")
-
-    monkeypatch.setattr(events, "event_writer", FailingEventWriter())
-
+async def test_kds_event_failure_does_not_fail_delivery(client):
+    client.event_writer.fail_task_displayed = True
     kitchen_id, station_id = await _create_station(client)
     response = await client.post(
         f"/internal/kds/stations/{station_id}/tasks",
@@ -228,23 +211,8 @@ async def test_kds_event_failure_does_not_fail_delivery(monkeypatch, client):
     assert response.status_code == 201
 
 
-async def test_kds_claim_success_calls_fulfillment_and_writes_events(monkeypatch, client):
-    class FakeEventWriter:
-        def __init__(self):
-            self.kds_events = []
-            self.station_events = []
-
-        async def write_task_displayed(self, task, correlation_id):
-            pass
-
-        async def write_kds_event(self, event_type, task, station_worker_id, correlation_id, payload):
-            self.kds_events.append((event_type, task, station_worker_id, correlation_id, payload))
-
-        async def write_station_event(self, event_type, **payload):
-            self.station_events.append((event_type, payload))
-
-    fake_events = FakeEventWriter()
-    monkeypatch.setattr(events, "event_writer", fake_events)
+async def test_kds_claim_success_calls_fulfillment_and_writes_events(client):
+    fake_events = client.event_writer
     kitchen_id, station_id = await _create_station(client)
     delivered = await client.post(f"/internal/kds/stations/{station_id}/tasks", json=_delivery_payload(kitchen_id))
     task_id = delivered.json()["task_id"]
@@ -340,23 +308,8 @@ async def test_kds_claim_fulfillment_failure_compensates(client):
     assert stations.json()[0]["busy_slots"] == 0
 
 
-async def test_kds_complete_success_calls_fulfillment_and_releases_slot(monkeypatch, client):
-    class FakeEventWriter:
-        def __init__(self):
-            self.kds_events = []
-            self.station_events = []
-
-        async def write_task_displayed(self, task, correlation_id):
-            pass
-
-        async def write_kds_event(self, event_type, task, station_worker_id, correlation_id, payload):
-            self.kds_events.append(event_type)
-
-        async def write_station_event(self, event_type, **payload):
-            self.station_events.append(event_type)
-
-    fake_events = FakeEventWriter()
-    monkeypatch.setattr(events, "event_writer", fake_events)
+async def test_kds_complete_success_calls_fulfillment_and_releases_slot(client):
+    fake_events = client.event_writer
     kitchen_id, station_id = await _create_station(client)
     delivered = await client.post(f"/internal/kds/stations/{station_id}/tasks", json=_delivery_payload(kitchen_id))
     task_id = delivered.json()["task_id"]
@@ -377,8 +330,8 @@ async def test_kds_complete_success_calls_fulfillment_and_releases_slot(monkeypa
     assert client.fulfillment_client.complete_calls[0][0] == task_id
     stations = await client.get(f"/kitchens/{kitchen_id}/stations")
     assert stations.json()[0]["busy_slots"] == 0
-    assert "KdsTaskCompleted" in fake_events.kds_events
-    assert "StationBusySlotReleased" in fake_events.station_events
+    assert "KdsTaskCompleted" in [event_type for event_type, *_ in fake_events.kds_events]
+    assert "StationBusySlotReleased" in [event_type for event_type, _ in fake_events.station_events]
 
 
 async def test_kds_complete_validation_and_fulfillment_failure(client):

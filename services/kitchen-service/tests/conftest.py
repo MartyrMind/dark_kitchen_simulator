@@ -9,8 +9,33 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite://")
 
 from app.db import Base, get_session
+from app.events import get_event_writer
 from app.main import create_app
 from app.clients import get_fulfillment_client
+
+
+class FakeEventWriter:
+    def __init__(self):
+        self.task_displayed_events = []
+        self.events = self.task_displayed_events
+        self.kds_events = []
+        self.station_events = []
+        self.audit_events = []
+        self.fail_task_displayed = False
+
+    async def write_task_displayed(self, task, correlation_id):
+        if self.fail_task_displayed:
+            raise RuntimeError("mongo down")
+        self.task_displayed_events.append((task, correlation_id))
+
+    async def write_kds_event(self, event_type, task, station_worker_id, correlation_id, payload):
+        self.kds_events.append((event_type, task, station_worker_id, correlation_id, payload))
+
+    async def write_station_event(self, event_type, **payload):
+        self.station_events.append((event_type, payload))
+
+    async def write_audit_event(self, event_type, **payload):
+        self.audit_events.append((event_type, payload))
 
 
 class FakeFulfillmentClient:
@@ -53,11 +78,14 @@ async def client():
 
     app = create_app()
     fake_fulfillment_client = FakeFulfillmentClient()
+    fake_event_writer = FakeEventWriter()
     app.dependency_overrides[get_session] = override_get_session
     app.dependency_overrides[get_fulfillment_client] = lambda: fake_fulfillment_client
+    app.dependency_overrides[get_event_writer] = lambda: fake_event_writer
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http_client:
         http_client.fulfillment_client = fake_fulfillment_client
+        http_client.event_writer = fake_event_writer
         yield http_client
 
     await engine.dispose()

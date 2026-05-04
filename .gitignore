@@ -182,7 +182,6 @@ openapi-generator-ignore
 # =========================
 # PlantUML / diagrams generated files
 # =========================
-*.png
 *.svg
 *.pdf
 !docs/**/*.pdf

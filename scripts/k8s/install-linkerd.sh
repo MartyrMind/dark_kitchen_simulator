@@ -7,6 +7,7 @@ if ! command -v linkerd >/dev/null 2>&1; then
 fi
 
 linkerd check --pre
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml
 linkerd install --crds | kubectl apply -f -
 linkerd install | kubectl apply -f -
 linkerd check
